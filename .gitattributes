@@ -1,0 +1,3 @@
+# Atlas migration checksums are byte-sensitive. Keep migration sources stable across platforms.
+migrations/*.sql text eol=lf
+migrations/atlas.sum text eol=lf

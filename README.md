@@ -55,8 +55,16 @@ review 可能な SQL migration を置きます。`atlas.hcl` は target database
 
 ## CI
 
-GitHub Actions では、review 時に期待する軽量な検証を実行します。
-詳細は [docs/change-review-guidelines.md#ci-の扱い](docs/change-review-guidelines.md#ci-の扱い) を参照してください。
+GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行します。
+
+- `CI`: PR と `main` / `develop` への push で migration の検証と local PostgreSQL への適用を行う。
+- `Publish Atlas Registry`: `develop` の `migrations/` または `atlas.hcl` の変更後に、
+  migration directory を Atlas Registry の `dacpractice` へ公開する。
+
+Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
+登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
+[docs/database-as-code-workflow.md#atlas-registry-公開](docs/database-as-code-workflow.md#atlas-registry-公開) と
+[docs/change-review-guidelines.md#ci-の扱い](docs/change-review-guidelines.md#ci-の扱い) を参照してください。
 
 ## 構成
 

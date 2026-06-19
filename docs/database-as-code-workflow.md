@@ -42,6 +42,23 @@
 - AWS resource の source of truth は採用した IaC tool の code と state で扱う。
 - AWS console での手動変更は drift として扱い、code に反映するか戻す。
 
+## Atlas Registry 公開
+
+- PR では migration の検証だけを行い、Atlas Registry は更新しない。
+- `develop` にマージされ、`migrations/` または `atlas.hcl` が変わったときだけ
+  `Publish Atlas Registry` workflow が `dacpractice` を更新する。
+- workflow は GitHub Actions Secret の `ATLAS_TOKEN` に保存した Atlas Cloud の Bot token を使う。
+  Bot は organization settings で作成し、token は repository や workflow 定義に保存しない。
+- 同時実行を直列化し、先に開始した公開処理を途中で取り消さない。
+- Registry は migration directory の配布・確認用であり、Aurora への適用は別の
+  deployment workflow で明示的に扱う。
+
+## Migration file format
+
+- `migrations/*.sql` と `migrations/atlas.sum` は `.gitattributes` で LF に固定する。
+- Atlas の checksum は migration file のバイト列を比較するため、Windows の CRLF 変換を
+  許可しない。
+
 ## 採用 tool の考え方
 
 - Aurora の SQL schema migration には Atlas を使う。
