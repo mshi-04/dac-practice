@@ -50,14 +50,7 @@ review 可能な SQL migration を置きます。`atlas.hcl` は target database
 ## CI
 
 GitHub Actions では、review 時に期待する軽量な検証を実行します。
-
-- tracked file の trailing whitespace scan
-- `atlas migrate validate --env local`
-- PostgreSQL 16 service container に対する `atlas migrate apply --env local`
-
-documentation のみ、または SQL migration のみの変更では UnitTest は必須ではありません。
-application code、generation script、policy check logic を追加した場合に UnitTest や
-それに相当する自動検証を追加します。
+詳細は [docs/change-review-guidelines.md#ci-の扱い](docs/change-review-guidelines.md#ci-の扱い) を参照してください。
 
 ## 構成
 
