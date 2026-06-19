@@ -11,6 +11,10 @@ database schema、AWS database resource design、review guidance を code とし
 
 現在は基盤整備フェーズです。運用方針と AI 向けの判断基準は [docs](docs) に置いています。
 
+練習用 domain は EC サイトを想定しています。Aurora schema と DynamoDB access pattern の
+分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
+checkout の transaction 境界は [docs/ecommerce-checkout-workflow.md](docs/ecommerce-checkout-workflow.md) に置いています。
+
 Aurora は Amazon Aurora PostgreSQL-compatible Edition を対象にします。
 local validation では PostgreSQL 16 と Atlas migration を使います。
 
@@ -29,6 +33,8 @@ local validation では PostgreSQL 16 と Atlas migration を使います。
 - [docs/aws-resource-guidelines.md](docs/aws-resource-guidelines.md)
 - [docs/aurora-guidelines.md](docs/aurora-guidelines.md)
 - [docs/dynamodb-guidelines.md](docs/dynamodb-guidelines.md)
+- [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md)
+- [docs/ecommerce-checkout-workflow.md](docs/ecommerce-checkout-workflow.md)
 - [docs/change-review-guidelines.md](docs/change-review-guidelines.md)
 
 ## Aurora Local Validation

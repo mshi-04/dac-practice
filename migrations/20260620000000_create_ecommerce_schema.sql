@@ -1,11 +1,7 @@
-CREATE TABLE customers (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT NOT NULL UNIQUE,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deleted')),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+-- Expand the Aurora PostgreSQL-compatible practice schema for an e-commerce domain.
+ALTER TABLE customers
+  ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deleted')),
+  ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 CREATE TABLE customer_addresses (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -80,23 +76,6 @@ CREATE TABLE orders (
 CREATE INDEX orders_customer_id_placed_at_idx ON orders (customer_id, placed_at DESC);
 CREATE INDEX orders_status_idx ON orders (status);
 
-CREATE TABLE order_addresses (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id BIGINT NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
-  address_type TEXT NOT NULL CHECK (address_type IN ('shipping', 'billing')),
-  recipient_name TEXT NOT NULL,
-  postal_code TEXT NOT NULL,
-  region TEXT NOT NULL,
-  city TEXT NOT NULL,
-  address_line1 TEXT NOT NULL,
-  address_line2 TEXT,
-  phone_number TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (order_id, address_type)
-);
-
-CREATE INDEX order_addresses_order_id_idx ON order_addresses (order_id);
-
 CREATE TABLE order_items (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   order_id BIGINT NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
@@ -111,50 +90,6 @@ CREATE TABLE order_items (
 
 CREATE INDEX order_items_order_id_idx ON order_items (order_id);
 CREATE INDEX order_items_product_id_idx ON order_items (product_id);
-
-CREATE TABLE order_status_events (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id BIGINT NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
-  from_status TEXT,
-  to_status TEXT NOT NULL CHECK (to_status IN ('placed', 'paid', 'fulfilled', 'canceled', 'refunded')),
-  reason TEXT,
-  occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX order_status_events_order_id_occurred_at_idx
-  ON order_status_events (order_id, occurred_at DESC);
-
-CREATE TABLE inventory_reservations (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  order_id BIGINT NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
-  product_id BIGINT NOT NULL REFERENCES products (id) ON DELETE RESTRICT,
-  quantity INTEGER NOT NULL CHECK (quantity > 0),
-  status TEXT NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved', 'released', 'consumed')),
-  expires_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (order_id, product_id)
-);
-
-CREATE INDEX inventory_reservations_product_id_status_idx
-  ON inventory_reservations (product_id, status);
-CREATE INDEX inventory_reservations_expires_at_idx
-  ON inventory_reservations (expires_at)
-  WHERE expires_at IS NOT NULL AND status = 'reserved';
-
-CREATE TABLE inventory_movements (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  product_id BIGINT NOT NULL REFERENCES products (id) ON DELETE RESTRICT,
-  order_id BIGINT REFERENCES orders (id) ON DELETE SET NULL,
-  movement_type TEXT NOT NULL CHECK (movement_type IN ('stock_in', 'reserve', 'release', 'ship', 'adjust')),
-  quantity_delta INTEGER NOT NULL CHECK (quantity_delta <> 0),
-  reason TEXT,
-  occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX inventory_movements_product_id_occurred_at_idx
-  ON inventory_movements (product_id, occurred_at DESC);
-CREATE INDEX inventory_movements_order_id_idx ON inventory_movements (order_id);
 
 CREATE TABLE payments (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -174,21 +109,6 @@ CREATE TABLE payments (
 CREATE INDEX payments_order_id_idx ON payments (order_id);
 CREATE INDEX payments_status_idx ON payments (status);
 
-CREATE TABLE payment_events (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  payment_id BIGINT NOT NULL REFERENCES payments (id) ON DELETE CASCADE,
-  event_type TEXT NOT NULL CHECK (event_type IN ('authorized', 'captured', 'failed', 'refunded', 'voided')),
-  provider_event_id TEXT,
-  amount NUMERIC(12, 2) CHECK (amount >= 0),
-  currency CHAR(3) NOT NULL DEFAULT 'JPY',
-  occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  raw_event JSONB,
-  UNIQUE (provider_event_id)
-);
-
-CREATE INDEX payment_events_payment_id_occurred_at_idx
-  ON payment_events (payment_id, occurred_at DESC);
-
 CREATE TABLE shipments (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   order_id BIGINT NOT NULL REFERENCES orders (id) ON DELETE RESTRICT,
@@ -205,15 +125,3 @@ CREATE INDEX shipments_order_id_idx ON shipments (order_id);
 CREATE UNIQUE INDEX shipments_carrier_tracking_number_idx
   ON shipments (carrier, tracking_number)
   WHERE carrier IS NOT NULL AND tracking_number IS NOT NULL;
-
-CREATE TABLE shipment_events (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  shipment_id BIGINT NOT NULL REFERENCES shipments (id) ON DELETE CASCADE,
-  event_type TEXT NOT NULL CHECK (event_type IN ('preparing', 'shipped', 'in_transit', 'delivered', 'returned', 'canceled')),
-  location TEXT,
-  occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  raw_event JSONB
-);
-
-CREATE INDEX shipment_events_shipment_id_occurred_at_idx
-  ON shipment_events (shipment_id, occurred_at DESC);

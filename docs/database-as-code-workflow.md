@@ -17,6 +17,10 @@
   データに使う想定。
 - DynamoDB は key-value / document access、predictable low-latency query、高い
   scale-out が必要なデータに使う想定。
+- EC サイトでは、注文確定、在庫引当、決済状態更新の source of truth は Aurora に置き、
+  カート、閲覧履歴、lookup cache は DynamoDB の access pattern として別に設計する。
+- checkout workflow を変える場合は、Aurora transaction 境界、DynamoDB 同期、失敗時の
+  forward fix 方針を同じ PR で review できるようにする。
 - どちらに置くか迷う場合は、先に access pattern、整合性要件、transaction 境界、
   query pattern、想定 scale、cost sensitivity を文書化する。
 
