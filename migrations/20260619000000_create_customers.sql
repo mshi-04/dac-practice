@@ -1,0 +1,7 @@
+-- Create the initial Aurora PostgreSQL-compatible practice schema.
+CREATE TABLE customers (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
