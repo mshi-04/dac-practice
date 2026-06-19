@@ -2,62 +2,46 @@
 
 Database as Code practice project.
 
-This repository uses PostgreSQL and Atlas to practice managing database schema
-changes as code.
+This repository is for practicing Database as Code with AWS database services.
+
+The target databases are:
+
+- Amazon Aurora
+- Amazon DynamoDB
+
+The project is currently in the documentation-first phase. AI-facing project
+guidance lives under [docs/ai](docs/ai).
 
 ## Requirements
 
-- Docker
-- Docker Compose
-- Atlas CLI
+- Git
+- Docker, when using local database practice targets
+- Atlas CLI, when practicing Aurora-style relational migrations locally
+- An AWS IaC tool, to be selected later
 
-## Start the database
+## Read First
 
-```powershell
-docker compose up -d db
-```
-
-## Apply the desired schema directly
-
-```powershell
-atlas schema apply --env local
-```
-
-Atlas reads [schema.sql](schema.sql), compares it with the local PostgreSQL
-database, plans the change, and asks for approval before applying it.
-
-## Generate a versioned migration
-
-```powershell
-atlas migrate diff initial --env local
-```
-
-This writes SQL migration files under [migrations](migrations).
-
-## Apply versioned migrations
-
-```powershell
-atlas migrate apply --env local
-```
-
-## Inspect the database schema
-
-```powershell
-atlas schema inspect --url "postgres://app:app_password@localhost:5432/appdb?search_path=public&sslmode=disable" --format "{{ sql . }}"
-```
-
-## Connect to PostgreSQL
-
-```powershell
-docker compose exec db psql -U app -d appdb
-```
+- [AGENTS.md](AGENTS.md)
+- [docs/ai/project-context.md](docs/ai/project-context.md)
+- [docs/ai/database-as-code-workflow.md](docs/ai/database-as-code-workflow.md)
+- [docs/ai/aws-resource-guidelines.md](docs/ai/aws-resource-guidelines.md)
+- [docs/ai/aurora-guidelines.md](docs/ai/aurora-guidelines.md)
+- [docs/ai/dynamodb-guidelines.md](docs/ai/dynamodb-guidelines.md)
+- [docs/ai/change-review-guidelines.md](docs/ai/change-review-guidelines.md)
 
 ## Project Layout
 
 ```text
 .
+├── .agents/
+│   └── skills/
 ├── atlas.hcl
 ├── docker-compose.yml
+├── docs/
+│   └── ai/
 ├── migrations/
 └── schema.sql
 ```
+
+`atlas.hcl`, `docker-compose.yml`, and `schema.sql` are early local practice
+scaffolding. Revisit them when the Aurora engine and AWS IaC tool are selected.
