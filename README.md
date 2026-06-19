@@ -1,42 +1,40 @@
 # dac-practice
 
-Database as Code practice project.
+AWS database management のための Database as Code プロジェクトです。
 
-This repository is for practicing Database as Code with AWS database services.
+database schema、AWS database resource design、review guidance を code として管理します。
 
-The target databases are:
+対象 database:
 
 - Amazon Aurora
 - Amazon DynamoDB
 
-The project is currently in the documentation-first phase. AI-facing project
-guidance lives under [docs/ai](docs/ai).
+現在は基盤整備フェーズです。運用方針と AI 向けの判断基準は [docs](docs) に置いています。
 
-Aurora practice targets Amazon Aurora PostgreSQL-compatible Edition. The local
-practice target uses PostgreSQL 16 with Atlas migrations.
+Aurora は Amazon Aurora PostgreSQL-compatible Edition を対象にします。
+local validation では PostgreSQL 16 と Atlas migration を使います。
 
-## Requirements
+## 必要なもの
 
 - Git
-- Docker, when using local database practice targets
-- Atlas CLI, when practicing Aurora-style relational migrations locally
-- An AWS IaC tool, to be selected later
+- Docker: local database validation を使う場合
+- Atlas CLI: Aurora style の relational migration を local で検証する場合
+- AWS IaC tool: 後続で選定
 
-## Read First
+## 最初に読む
 
 - [AGENTS.md](AGENTS.md)
-- [docs/ai/project-context.md](docs/ai/project-context.md)
-- [docs/ai/database-as-code-workflow.md](docs/ai/database-as-code-workflow.md)
-- [docs/ai/aws-resource-guidelines.md](docs/ai/aws-resource-guidelines.md)
-- [docs/ai/aurora-guidelines.md](docs/ai/aurora-guidelines.md)
-- [docs/ai/dynamodb-guidelines.md](docs/ai/dynamodb-guidelines.md)
-- [docs/ai/change-review-guidelines.md](docs/ai/change-review-guidelines.md)
-- [docs/decisions/0001-aurora-postgresql-compatible.md](docs/decisions/0001-aurora-postgresql-compatible.md)
+- [docs/project-context.md](docs/project-context.md)
+- [docs/database-as-code-workflow.md](docs/database-as-code-workflow.md)
+- [docs/aws-resource-guidelines.md](docs/aws-resource-guidelines.md)
+- [docs/aurora-guidelines.md](docs/aurora-guidelines.md)
+- [docs/dynamodb-guidelines.md](docs/dynamodb-guidelines.md)
+- [docs/change-review-guidelines.md](docs/change-review-guidelines.md)
 
-## Aurora Local Migration Practice
+## Aurora Local Validation
 
-When Docker and Atlas are available, validate and apply the local Aurora
-PostgreSQL-compatible migration practice with:
+Docker と Atlas が使える場合は、local の Aurora PostgreSQL-compatible migration を
+次のコマンドで検証・適用します。
 
 ```powershell
 docker compose up -d db
@@ -45,24 +43,36 @@ atlas migrate validate --env local
 atlas migrate apply --env local
 ```
 
-`schema.sql` is the desired schema for local practice. `migrations/` contains
-reviewable SQL migrations. `atlas.hcl` reads the target database URL from
-`DATABASE_URL` so credentials are not stored in the Atlas configuration.
+`schema.sql` は local validation 用の desired schema です。`migrations/` には
+review 可能な SQL migration を置きます。`atlas.hcl` は target database URL を
+`DATABASE_URL` から読むため、credential を Atlas 設定に保存しません。
 
-## Project Layout
+## CI
+
+GitHub Actions では、review 時に期待する軽量な検証を実行します。
+
+- tracked file の trailing whitespace scan
+- `atlas migrate validate --env local`
+- PostgreSQL 16 service container に対する `atlas migrate apply --env local`
+
+documentation のみ、または SQL migration のみの変更では UnitTest は必須ではありません。
+application code、generation script、policy check logic を追加した場合に UnitTest や
+それに相当する自動検証を追加します。
+
+## 構成
 
 ```text
 .
+├── .github/
+│   └── workflows/
 ├── .agents/
 │   └── skills/
 ├── atlas.hcl
 ├── docker-compose.yml
 ├── docs/
-│   ├── decisions/
-│   └── ai/
 ├── migrations/
 └── schema.sql
 ```
 
-`atlas.hcl`, `docker-compose.yml`, and `schema.sql` are early local practice
-scaffolding. Revisit them when the AWS IaC tool is selected.
+`atlas.hcl`、`docker-compose.yml`、`schema.sql` は local validation のための
+scaffolding です。AWS IaC tool を選定したタイミングで見直します。

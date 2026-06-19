@@ -2,15 +2,15 @@
 
 ## 目的
 
-DacPractice は Database as Code を学ぶためのリポジトリです。
+DacPractice は Database as Code を管理するリポジトリです。
 
-このプロジェクトは小さく明示的に保ち、学習者が次の流れを追える状態を優先します。
+このプロジェクトは、database 変更を review・検証・運用できる状態で Git に残すことを優先します。
 
-- AWS database resource を code として表現する
-- Aurora の relational schema change を migration として review する
-- DynamoDB の table design を access pattern から設計する
-- schema、migration、capacity、backup、security policy を Git 上で履歴管理する
-- local 検証と cloud 適用の境界を明確にする
+- AWS database resource を code として表現する。
+- Aurora の relational schema change を migration として review する。
+- DynamoDB の table design を access pattern から設計する。
+- schema、migration、capacity、backup、security policy を Git 上で履歴管理する。
+- local 検証、CI、cloud 適用、rollback/forward fix の境界を明確にする。
 
 ## 現在の技術スタック
 
@@ -18,15 +18,14 @@ DacPractice は Database as Code を学ぶためのリポジトリです。
 - Key-value / document database: Amazon DynamoDB
 - Relational schema migration: Atlas
 - AWS resource definition: Terraform、AWS CDK、CloudFormation のいずれかを後続で選定する
-- Local practice target: Docker Compose などの local database を必要に応じて使う
+- Local validation target: Docker Compose などの local database を必要に応じて使う
 - Repository hosting: GitHub
 
 ## リポジトリ構成
 
-- `docs/ai/`: AI 向けの詳細な判断基準。
+- `docs/`: AI と開発者向けの詳細な判断基準。
 - `migrations/`: Aurora 向けの versioned migration。
-- `docs/decisions/`: engine や tool の採用判断。
-- `schema.sql`: Aurora PostgreSQL-compatible 学習用の relational schema 定義。後続で配置を見直してよい。
+- `schema.sql`: Aurora PostgreSQL-compatible の relational schema 定義。後続で配置を見直してよい。
 - `atlas.hcl`: Atlas の local environment と migration 設定。
 - `docker-compose.yml`: local 検証環境。AWS 実リソースの代替ではない。
 - `AGENTS.md`: repo 全体に効く薄い永続指示。
@@ -43,9 +42,9 @@ DacPractice は Database as Code を学ぶためのリポジトリです。
 
 - Aurora と DynamoDB は同じ「Database」でも設計原則が異なるため、同じ schema
   guideline に混ぜない。
-- Aurora は PostgreSQL-compatible を前提に relational integrity、transaction、SQL migration を学ぶ対象にする。
+- Aurora は PostgreSQL-compatible を前提に relational integrity、transaction、SQL migration を扱う。
 - DynamoDB は access pattern、partition key、sort key、secondary index、capacity を
-  学ぶ対象にする。
-- destructive change、data loss、capacity/cost、backup/restore、security は学習用でも
-  明示的に review する。
+  明示的に設計する。
+- destructive change、data loss、capacity/cost、backup/restore、security は
+  影響範囲を明示して review する。
 - seed data、sample data、fixture は schema や AWS resource 定義と混ぜない。

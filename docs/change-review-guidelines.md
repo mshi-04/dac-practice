@@ -12,7 +12,7 @@ Database as Code の変更は、application code の変更と同じように rev
 - data loss、lock、長時間実行、既存 data との不整合が起きないか。
 - capacity、cost、backup、restore、encryption、network exposure への影響が分かるか。
 - local 検証で何を実行し、何が未検証かが分かるか。
-- docs/ai の方針と実際の変更がずれていないか。
+- docs の方針と実際の変更がずれていないか。
 
 ## Aurora migration の確認観点
 
@@ -49,7 +49,7 @@ git status -sb
 git diff --check
 ```
 
-Aurora migration や local database practice を変更した場合は、使える環境に応じて次も確認する。
+Aurora migration や local database validation を変更した場合は、使える環境に応じて次も確認する。
 
 ```powershell
 atlas migrate validate --env local
@@ -67,3 +67,18 @@ terraform plan
 ```
 
 使えない command がある場合は、完了報告に理由を明記する。
+
+## CI の扱い
+
+GitHub Actions では、PR と `main` / `develop` への push で次を確認する。
+
+```bash
+if git grep -nI -E '[[:blank:]]$' -- .; then exit 1; fi
+atlas migrate validate --env local
+atlas migrate apply --env local
+```
+
+UnitTest は常時必須ではない。documentation、SQL schema、Atlas migration の変更では、
+UnitTest よりも Atlas validation と local PostgreSQL への migration apply を優先する。
+application code、生成 script、policy 判定 logic を追加した場合は、UnitTest かそれに相当する
+自動検証を追加する。

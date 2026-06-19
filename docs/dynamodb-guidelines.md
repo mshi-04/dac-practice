@@ -23,7 +23,7 @@ table を作る前に、少なくとも次を書く。
 - partition key は高 cardinality を優先する。
 - hot partition を避ける。
 - sort key は range query、時系列、階層表現に使う。
-- single-table design と multiple-table design は、access pattern と学習目的に応じて選ぶ。
+- single-table design と multiple-table design は、access pattern と運用要件に応じて選ぶ。
 - relational model をそのまま table 分割に写さない。
 
 ## secondary index
@@ -35,7 +35,7 @@ table を作る前に、少なくとも次を書く。
 
 ## operation policy
 
-学習用でも、table 定義では次を意図的に扱う。
+table 定義では、運用に必要な次の項目を明示的に扱う。
 
 - billing mode
 - point-in-time recovery
