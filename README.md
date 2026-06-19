@@ -65,4 +65,4 @@ reviewable SQL migrations. `atlas.hcl` reads the target database URL from
 ```
 
 `atlas.hcl`, `docker-compose.yml`, and `schema.sql` are early local practice
-scaffolding. Revisit them when the Aurora engine and AWS IaC tool are selected.
+scaffolding. Revisit them when the AWS IaC tool is selected.
