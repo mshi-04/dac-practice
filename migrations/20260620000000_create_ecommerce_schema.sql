@@ -21,6 +21,12 @@ CREATE TABLE customer_addresses (
 );
 
 CREATE INDEX customer_addresses_customer_id_idx ON customer_addresses (customer_id);
+CREATE UNIQUE INDEX customer_addresses_default_shipping_idx
+  ON customer_addresses (customer_id)
+  WHERE is_default_shipping = TRUE;
+CREATE UNIQUE INDEX customer_addresses_default_billing_idx
+  ON customer_addresses (customer_id)
+  WHERE is_default_billing = TRUE;
 
 CREATE TABLE product_categories (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -55,7 +61,8 @@ CREATE TABLE inventory_items (
   available_quantity INTEGER NOT NULL DEFAULT 0 CHECK (available_quantity >= 0),
   reserved_quantity INTEGER NOT NULL DEFAULT 0 CHECK (reserved_quantity >= 0),
   reorder_threshold INTEGER NOT NULL DEFAULT 0 CHECK (reorder_threshold >= 0),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (available_quantity >= reserved_quantity)
 );
 
 CREATE TABLE orders (

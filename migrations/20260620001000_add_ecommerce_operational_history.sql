@@ -19,7 +19,7 @@ CREATE INDEX order_addresses_order_id_idx ON order_addresses (order_id);
 CREATE TABLE order_status_events (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   order_id BIGINT NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
-  from_status TEXT,
+  from_status TEXT CHECK (from_status IS NULL OR from_status IN ('placed', 'paid', 'fulfilled', 'canceled', 'refunded')),
   to_status TEXT NOT NULL CHECK (to_status IN ('placed', 'paid', 'fulfilled', 'canceled', 'refunded')),
   reason TEXT,
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -68,12 +68,14 @@ CREATE TABLE payment_events (
   amount NUMERIC(12, 2) CHECK (amount >= 0),
   currency CHAR(3) NOT NULL DEFAULT 'JPY',
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  raw_event JSONB,
-  UNIQUE (provider_event_id)
+  raw_event JSONB
 );
 
 CREATE INDEX payment_events_payment_id_occurred_at_idx
   ON payment_events (payment_id, occurred_at DESC);
+CREATE UNIQUE INDEX payment_events_provider_event_id_idx
+  ON payment_events (provider_event_id)
+  WHERE provider_event_id IS NOT NULL;
 
 CREATE TABLE shipment_events (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

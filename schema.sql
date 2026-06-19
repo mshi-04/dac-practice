@@ -25,6 +25,12 @@ CREATE TABLE customer_addresses (
 );
 
 CREATE INDEX customer_addresses_customer_id_idx ON customer_addresses (customer_id);
+CREATE UNIQUE INDEX customer_addresses_default_shipping_idx
+  ON customer_addresses (customer_id)
+  WHERE is_default_shipping = TRUE;
+CREATE UNIQUE INDEX customer_addresses_default_billing_idx
+  ON customer_addresses (customer_id)
+  WHERE is_default_billing = TRUE;
 
 CREATE TABLE product_categories (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -59,7 +65,8 @@ CREATE TABLE inventory_items (
   available_quantity INTEGER NOT NULL DEFAULT 0 CHECK (available_quantity >= 0),
   reserved_quantity INTEGER NOT NULL DEFAULT 0 CHECK (reserved_quantity >= 0),
   reorder_threshold INTEGER NOT NULL DEFAULT 0 CHECK (reorder_threshold >= 0),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (available_quantity >= reserved_quantity)
 );
 
 CREATE TABLE orders (
@@ -115,7 +122,7 @@ CREATE INDEX order_items_product_id_idx ON order_items (product_id);
 CREATE TABLE order_status_events (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   order_id BIGINT NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
-  from_status TEXT,
+  from_status TEXT CHECK (from_status IS NULL OR from_status IN ('placed', 'paid', 'fulfilled', 'canceled', 'refunded')),
   to_status TEXT NOT NULL CHECK (to_status IN ('placed', 'paid', 'fulfilled', 'canceled', 'refunded')),
   reason TEXT,
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -182,12 +189,14 @@ CREATE TABLE payment_events (
   amount NUMERIC(12, 2) CHECK (amount >= 0),
   currency CHAR(3) NOT NULL DEFAULT 'JPY',
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  raw_event JSONB,
-  UNIQUE (provider_event_id)
+  raw_event JSONB
 );
 
 CREATE INDEX payment_events_payment_id_occurred_at_idx
   ON payment_events (payment_id, occurred_at DESC);
+CREATE UNIQUE INDEX payment_events_provider_event_id_idx
+  ON payment_events (provider_event_id)
+  WHERE provider_event_id IS NOT NULL;
 
 CREATE TABLE shipments (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
