@@ -1,2 +1,4 @@
-h1:Exgs/ECVfhrEOPAgnvnqyJSjPEYOTI7ZDG1LEyK+Fx0=
+h1:tlsKKHlrorjoIPVXGBVw0uLrdZEJTg30azSUVr5veYI=
 20260619000000_create_customers.sql h1:1jTmj+7IprkeSxY9yNFZtSrfkqrFTlgZ0BIcpjBRJ60=
+20260620000000_create_ecommerce_schema.sql h1:D3UFFkJq10KQs+edbozWbGwV1LPPLcOO8Mb1+bBKYCY=
+20260620001000_add_ecommerce_operational_history.sql h1:miZq58u7pWW+m/DVTLf/cDVIPStwLIZKBG4Xws8qINc=

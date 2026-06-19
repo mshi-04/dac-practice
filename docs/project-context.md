@@ -5,6 +5,7 @@
 DacPractice は Database as Code を管理するリポジトリです。
 
 このプロジェクトは、database 変更を review・検証・運用できる状態で Git に残すことを優先します。
+練習用の domain は EC サイトを想定します。
 
 - AWS database resource を code として表現する。
 - Aurora の relational schema change を migration として review する。
@@ -45,6 +46,8 @@ DacPractice は Database as Code を管理するリポジトリです。
 - Aurora は PostgreSQL-compatible を前提に relational integrity、transaction、SQL migration を扱う。
 - DynamoDB は access pattern、partition key、sort key、secondary index、capacity を
   明示的に設計する。
+- EC サイトの注文、商品、在庫、決済は Aurora を source of truth とし、カート、閲覧履歴、
+  lookup cache は DynamoDB の access pattern として分けて review する。
 - destructive change、data loss、capacity/cost、backup/restore、security は
   影響範囲を明示して review する。
 - seed data、sample data、fixture は schema や AWS resource 定義と混ぜない。
