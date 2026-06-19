@@ -40,12 +40,14 @@ PostgreSQL-compatible migration practice with:
 
 ```powershell
 docker compose up -d db
+$env:DATABASE_URL = "postgres://app:app_password@localhost:5432/appdb?search_path=public&sslmode=disable"
 atlas migrate validate --env local
 atlas migrate apply --env local
 ```
 
 `schema.sql` is the desired schema for local practice. `migrations/` contains
-reviewable SQL migrations.
+reviewable SQL migrations. `atlas.hcl` reads the target database URL from
+`DATABASE_URL` so credentials are not stored in the Atlas configuration.
 
 ## Project Layout
 
