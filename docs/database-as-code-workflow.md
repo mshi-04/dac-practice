@@ -9,7 +9,7 @@
 3. NoSQL data model definition: DynamoDB の access pattern、key design、secondary index。
 4. Operational policy: encryption、backup、restore、retention、monitoring、cost guardrail。
 
-これらは同じ PR に混ぜすぎない。学習用でも、review しやすい単位に分ける。
+これらは同じ PR に混ぜすぎない。影響範囲と reviewer の責務が追える単位に分ける。
 
 ## Aurora と DynamoDB の責務分離
 
