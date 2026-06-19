@@ -87,3 +87,6 @@ Atlas Registry への公開は、PR 検証とは別 workflow として扱う。`
 `migrations/` または `atlas.hcl` の変更だけを対象にし、GitHub Actions Secret の
 `ATLAS_TOKEN` に保存した Atlas Cloud Bot token を使って `dacpractice` を更新する。PR からの公開、token の平文保存、
 Registry 公開と Aurora への適用の同時実行は行わない。
+
+GitHub Actions の第三者Actionは full commit SHA に固定する。Dependabot は使わないため、
+Actionの更新はリリースタグを確認した専用のレビュー可能なPRとして手動で行う。
