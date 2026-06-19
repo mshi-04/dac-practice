@@ -14,9 +14,9 @@ DacPractice は Database as Code を学ぶためのリポジトリです。
 
 ## 現在の技術スタック
 
-- Relational database: Amazon Aurora
+- Relational database: Amazon Aurora PostgreSQL-compatible Edition
 - Key-value / document database: Amazon DynamoDB
-- Relational schema migration: Atlas を候補として扱う
+- Relational schema migration: Atlas
 - AWS resource definition: Terraform、AWS CDK、CloudFormation のいずれかを後続で選定する
 - Local practice target: Docker Compose などの local database を必要に応じて使う
 - Repository hosting: GitHub
@@ -25,8 +25,9 @@ DacPractice は Database as Code を学ぶためのリポジトリです。
 
 - `docs/ai/`: AI 向けの詳細な判断基準。
 - `migrations/`: Aurora 向けの versioned migration。
-- `schema.sql`: Aurora 学習用の relational schema 定義。後続で配置を見直してよい。
-- `atlas.hcl`: Atlas を使う場合の environment と migration 設定。後続で Aurora 前提に見直す。
+- `docs/decisions/`: engine や tool の採用判断。
+- `schema.sql`: Aurora PostgreSQL-compatible 学習用の relational schema 定義。後続で配置を見直してよい。
+- `atlas.hcl`: Atlas の local environment と migration 設定。
 - `docker-compose.yml`: local 検証環境。AWS 実リソースの代替ではない。
 - `AGENTS.md`: repo 全体に効く薄い永続指示。
 - `.agents/skills/dac-practice/SKILL.md`: DacPractice 作業用 skill。
@@ -42,7 +43,7 @@ DacPractice は Database as Code を学ぶためのリポジトリです。
 
 - Aurora と DynamoDB は同じ「Database」でも設計原則が異なるため、同じ schema
   guideline に混ぜない。
-- Aurora は relational integrity、transaction、SQL migration を学ぶ対象にする。
+- Aurora は PostgreSQL-compatible を前提に relational integrity、transaction、SQL migration を学ぶ対象にする。
 - DynamoDB は access pattern、partition key、sort key、secondary index、capacity を
   学ぶ対象にする。
 - destructive change、data loss、capacity/cost、backup/restore、security は学習用でも

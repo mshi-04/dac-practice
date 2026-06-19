@@ -5,18 +5,15 @@
 Aurora は relational database として扱う。Database as Code では、AWS resource 定義と
 SQL schema migration を分けて review できる状態を目指す。
 
-## engine 選定
+## engine
 
-Aurora には MySQL-compatible と PostgreSQL-compatible がある。engine を決めるまでは、
-engine 固有の SQL、型、extension、migration assumption を固定しない。
+DacPractice では Aurora PostgreSQL-compatible Edition を学習対象にする。
 
-engine を決める PR では、少なくとも次を文書化する。
+採用判断は [0001. Aurora PostgreSQL-compatible を採用する](../decisions/0001-aurora-postgresql-compatible.md)
+に残す。
 
-- 採用 engine
-- 採用理由
-- local 検証方法
-- migration tool
-- production 相当で気にする制約
+Aurora MySQL-compatible 固有の SQL、型、extension、migration assumption はこの repo の
+Aurora schema practice では扱わない。
 
 ## schema design
 

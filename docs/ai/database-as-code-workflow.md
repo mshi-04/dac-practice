@@ -33,14 +33,14 @@
 
 ## source of truth
 
-- Aurora schema の source of truth は migration と schema 定義の組み合わせで扱う。
+- Aurora schema の source of truth は Atlas migration と schema 定義の組み合わせで扱う。
 - DynamoDB の source of truth は table/index 定義と access pattern 文書で扱う。
 - AWS resource の source of truth は採用した IaC tool の code と state で扱う。
 - AWS console での手動変更は drift として扱い、code に反映するか戻す。
 
 ## 採用 tool の考え方
 
-- Aurora の SQL schema migration には Atlas を候補として使う。
+- Aurora の SQL schema migration には Atlas を使う。
 - Aurora cluster や DynamoDB table など AWS resource には Terraform、AWS CDK、
   CloudFormation のいずれかを後続で選ぶ。
 - DynamoDB は SQL migration ではなく、table/index/access pattern の変更として review する。
