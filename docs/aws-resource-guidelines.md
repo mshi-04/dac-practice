@@ -44,6 +44,7 @@ Aurora では、少なくとも次を code review 対象にする。
 - deletion protection
 - encryption
 - log export
+- CloudWatch Logs の retention
 - secret management
 
 ## DynamoDB resource

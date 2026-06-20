@@ -56,27 +56,12 @@ jobs:
           echo "migration_tag=$migration_tag" >> "$GITHUB_OUTPUT"
 
       - name: Obtain AWS credentials through GitHub OIDC
-        env:
-          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
-        run: |
-          test -n "$AWS_DEPLOY_ROLE_ARN"
-          test -n "$AWS_REGION"
-          token="$(curl --fail --silent --show-error \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r '.value')"
-          credentials="$(aws sts assume-role-with-web-identity \
-            --role-arn "$AWS_DEPLOY_ROLE_ARN" \
-            --role-session-name "github-atlas-deploy-${{ github.run_id }}" \
-            --web-identity-token "$token" \
-            --duration-seconds 900 \
-            --region "$AWS_REGION")"
-          {
-            echo "AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' <<<"$credentials")"
-            echo "AWS_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' <<<"$credentials")"
-            echo "AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' <<<"$credentials")"
-            echo "AWS_REGION=$AWS_REGION"
-          } >> "$GITHUB_ENV"
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-atlas-deploy-${{ github.run_id }}
+          role-duration-seconds: 900
 
       - name: Start VPC deployment build
         id: build
@@ -97,7 +82,7 @@ jobs:
         env:
           BUILD_ID: ${{ steps.build.outputs.id }}
         run: |
-          for attempt in $(seq 1 240); do
+          for ((attempt = 1; attempt <= 240; attempt++)); do
             status="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"
             echo "CodeBuild status: $status"
             case "$status" in

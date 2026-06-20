@@ -161,6 +161,8 @@ Aurora へ直接接続しません。
    - Environment variable `AWS_REGION`: 検証環境の region。
    - Environment variable `AWS_DEPLOY_ROLE_ARN`: Terraform 出力 `github_deploy_role_arn`。
    - Environment variable `CODEBUILD_PROJECT_NAME`: Terraform 出力 `codebuild_project_name`。
+   - `terraform-plan` Environment にも required reviewers を設定する。Terraform plan の AWS 読取り
+     OIDC role は、この Environment を通過した job だけが利用できる。
 5. **手動 deploy**: `Deploy verification Aurora` workflow を `workflow_dispatch` で起動し、
    `migration_tag` に公開済みの immutable SHA tag を入力して、承認後に実行する。
 
@@ -181,6 +183,8 @@ Aurora へ直接接続しません。
   保持された snapshot / backup を確認する。
 - **KMS key**: Aurora 暗号化用の customer managed key は月額課金がある。`terraform destroy`
   では削除予約（waiting period）となり、即時削除されない。
+- **Aurora PostgreSQL logs**: CloudWatch Logs への export は 30 日で保持する。変更時は
+  `aurora_log_retention_in_days` を明示し、調査・監査要件と費用を review する。
 - **deletion protection**: cluster は `deletion_protection = true`。破棄するには先に
   `-var "deletion_protection=false"` で apply してから destroy する。
 

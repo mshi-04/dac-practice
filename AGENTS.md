@@ -16,14 +16,14 @@
 
 ## skill
 
-作業領域ごとに skill を分けている。正本は `.agents/skills/` とし、Codex はこれらを直接読む。
-Claude Code 用の `.claude/skills/` は同期生成する。手順は
+作業領域ごとに skill を分けている。正本は `.agents/skills/` とする。Codex 用の
+`.codex/skills/` と Claude Code 用の `.claude/skills/` は同期生成する。手順は
 [docs/claude-code.md](docs/claude-code.md) を参照する。
 
-- [aurora-migration](.agents/skills/aurora-migration/SKILL.md): Aurora schema を Atlas で migration。
-- [dynamodb-modeling](.agents/skills/dynamodb-modeling/SKILL.md): DynamoDB の access pattern と key design。
-- [aws-resource](.agents/skills/aws-resource/SKILL.md): AWS resource を Terraform で定義（`infra/`）。
-- [change-review](.agents/skills/change-review/SKILL.md): Database as Code 変更の review。
+- [aurora-migration](.codex/skills/aurora-migration/SKILL.md): Aurora schema を Atlas で migration。
+- [dynamodb-modeling](.codex/skills/dynamodb-modeling/SKILL.md): DynamoDB の access pattern と key design。
+- [aws-resource](.codex/skills/aws-resource/SKILL.md): AWS resource を Terraform で定義（`infra/`）。
+- [change-review](.codex/skills/change-review/SKILL.md): Database as Code 変更の review。
 
 ## 作業ルール
 

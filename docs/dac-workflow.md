@@ -106,10 +106,14 @@ push で、`terraform fmt -check -recursive`、`terraform init -backend=false`�
 `AWS_TERRAFORM_PLAN_ROLE_ARN` が設定されている場合だけ実行する。fork PR には AWS credential を
 渡さない。
 
+`infra/terraform/plan/` は CI の plan 専用 root module であり、main stack の `s3` backend を
+初期化しない。CI はこの module を local state で実行し、remote state の読取り、lock、apply は行わない。
+
 `AWS_TERRAFORM_PLAN_ROLE_ARN` には Terraform output
-`github_terraform_plan_role_arn` を設定する。この OIDC role は branch push だけを信頼し、plan に
-必要な AWS resource の read action に限定する。trust policy は `job_workflow_ref` でも
-`terraform-plan.yml` に限定する。CI は remote state を使わず、apply は実行しない。
+`github_terraform_plan_role_arn` を設定する。この OIDC role は GitHub Environment
+`terraform-plan` を通過した job だけを信頼し、plan に必要な AWS resource の read action に
+限定する。Environment には required reviewers を設定する。CI は remote state を使わず、apply は
+実行しない。
 branch に対応する open PR がある場合は、plan の結果を PR コメントへ作成または更新する。
 
 ### 初回運用 runbook
@@ -122,8 +126,9 @@ branch に対応する open PR がある場合は、plan の結果を PR コメ�
    plan を確認してから apply する。
 3. Atlas Registry read token の Secrets Manager 登録: Terraform が作成した secret に token を投入する。
    token 値は Git・workflow・Terraform code に残さない。
-4. GitHub Environment `aurora-verification` 設定: 承認者、`AWS_REGION`、`AWS_DEPLOY_ROLE_ARN`、
-   `CODEBUILD_PROJECT_NAME` を設定する。repository variables には、Terraform output
+4. GitHub Environment 設定: `aurora-verification` には承認者、`AWS_REGION`、
+   `AWS_DEPLOY_ROLE_ARN`、`CODEBUILD_PROJECT_NAME` を設定する。`terraform-plan` にも required
+   reviewers を設定し、repository variables には Terraform output
    `github_terraform_plan_role_arn` を `AWS_TERRAFORM_PLAN_ROLE_ARN` として、同じ region を
    `AWS_REGION` として設定する。
 5. 手動 deploy: `Deploy verification Aurora` を `workflow_dispatch` で起動し、公開済み SHA tag を

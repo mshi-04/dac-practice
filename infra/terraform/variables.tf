@@ -39,6 +39,17 @@ variable "aurora_max_capacity" {
   default     = 2
 }
 
+variable "aurora_log_retention_in_days" {
+  description = "Retention period for exported Aurora PostgreSQL logs."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.aurora_log_retention_in_days)
+    error_message = "aurora_log_retention_in_days must be a supported CloudWatch Logs retention value."
+  }
+}
+
 variable "deletion_protection" {
   description = "Protect the verification cluster from accidental deletion."
   type        = bool
@@ -85,8 +96,13 @@ variable "atlas_registry" {
   default     = "dacpractice"
 }
 
-variable "atlas_image_tag" {
-  description = "Immutable Atlas container image tag used by CodeBuild."
+variable "atlas_image_reference" {
+  description = "Digest-pinned Atlas container image reference used by CodeBuild."
   type        = string
-  default     = "v1.2.3"
+  default     = "arigaio/atlas@sha256:289a0c8eb35905d5f1ff63d06c799752762cc41a83a70ec89f412d3a0fe673d9"
+
+  validation {
+    condition     = can(regex("^[^@]+@sha256:[0-9a-f]{64}$", var.atlas_image_reference))
+    error_message = "atlas_image_reference must be a digest-pinned container image reference."
+  }
 }
