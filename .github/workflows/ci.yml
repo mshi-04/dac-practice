@@ -60,14 +60,6 @@ jobs:
       - name: Validate desired schema
         run: atlas schema validate --env ci
 
-      - name: Lint latest migration
-        if: github.event.pull_request.head.repo.fork == false
-        run: >-
-          atlas migrate lint
-          --dir file://migrations
-          --dev-url "docker://postgres/16/dev?search_path=public"
-          --latest 1
-
       - name: Test migrations
         run: |
           latest_version="$(find migrations -maxdepth 1 -name '*.sql' -printf '%f\n' | sort | tail -n 1 | cut -d_ -f1)"

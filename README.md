@@ -69,7 +69,8 @@ atlas migrate validate --env local
 
 GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行します。
 
-- `CI`: PR と `main` / `develop` への push で migration の検証と local PostgreSQL への適用を行う。
+- `CI`: `main` / `develop` 向け PR で migration の検証と local PostgreSQL への適用を行う。
+- `Atlas Migration Lint`: migration 変更を含む同一リポジトリ PR で Atlas の lint を実行し、結果を PR にコメントする。
 - `Publish Atlas Registry`: `develop` の `migrations/` または `atlas.hcl` の変更後に、
   migration directory を Atlas Registry の `dacpractice` へ公開する。
 

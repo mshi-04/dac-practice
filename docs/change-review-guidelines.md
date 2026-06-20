@@ -97,3 +97,7 @@ apply job は status、dry-run、apply、status の順に実行し、失敗時�
 
 GitHub Actions の第三者Actionは full commit SHA に固定する。Dependabot は使わないため、
 Actionの更新はリリースタグを確認した専用のレビュー可能なPRとして手動で行う。
+
+Atlas Migration Lint workflow は migration を変更した同一リポジトリ PR だけを対象に、
+Atlas 公式 Action で lint 結果を PR へコメントする。fork PR には Atlas Cloud token を渡さず、
+この workflow を skip する。Registry 公開と Aurora への適用はこの workflow に含めない。
