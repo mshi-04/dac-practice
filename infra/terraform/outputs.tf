@@ -19,6 +19,10 @@ output "github_deploy_role_arn" {
   value = aws_iam_role.github_deploy.arn
 }
 
+output "github_terraform_plan_role_arn" {
+  value = aws_iam_role.github_terraform_plan.arn
+}
+
 output "shopping_cart_table_name" {
   value = aws_dynamodb_table.shopping_cart.name
 }

@@ -1,0 +1,89 @@
+name: Terraform Plan
+
+on:
+  push:
+    paths:
+      - .github/workflows/terraform-plan.yml
+      - infra/terraform/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Format and validate Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+
+      - name: Initialize Terraform without the remote backend
+        run: terraform -chdir=infra/terraform init -backend=false
+
+      - name: Validate Terraform configuration
+        run: terraform -chdir=infra/terraform validate
+
+  plan:
+    name: Plan Terraform changes
+    needs: static
+    if: vars.AWS_REGION != '' && vars.AWS_TERRAFORM_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Obtain AWS plan credentials through GitHub OIDC
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_TERRAFORM_PLAN_ROLE_ARN: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+        run: |
+          token="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r '.value')"
+          credentials="$(aws sts assume-role-with-web-identity \
+            --role-arn "$AWS_TERRAFORM_PLAN_ROLE_ARN" \
+            --role-session-name "github-terraform-plan-${{ github.run_id }}" \
+            --web-identity-token "$token" \
+            --duration-seconds 900 \
+            --region "$AWS_REGION")"
+          {
+            echo "AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' <<<"$credentials")"
+            echo "AWS_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' <<<"$credentials")"
+            echo "AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' <<<"$credentials")"
+            echo "AWS_REGION=$AWS_REGION"
+          } >> "$GITHUB_ENV"
+
+      - name: Initialize Terraform without the remote backend
+        run: terraform -chdir=infra/terraform init -backend=false
+
+      - name: Create Terraform plan
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: >-
+          terraform -chdir=infra/terraform plan
+          -input=false
+          -lock=false
+          -var "aws_region=$AWS_REGION"

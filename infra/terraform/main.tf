@@ -384,3 +384,57 @@ resource "aws_iam_role_policy" "github_deploy" {
     }]
   })
 }
+
+resource "aws_iam_role" "github_terraform_plan" {
+  name = "${local.name_prefix}-github-terraform-plan"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/*"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "github_terraform_plan" {
+  name = "${local.name_prefix}-github-terraform-plan"
+  role = aws_iam_role.github_terraform_plan.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "codebuild:BatchGetProjects",
+        "codebuild:ListTagsForResource",
+        "dynamodb:DescribeTable",
+        "dynamodb:ListTables",
+        "dynamodb:ListTagsOfResource",
+        "ec2:Describe*",
+        "iam:Get*",
+        "iam:List*",
+        "kms:Describe*",
+        "kms:GetKeyPolicy",
+        "kms:GetKeyRotationStatus",
+        "kms:List*",
+        "rds:Describe*",
+        "rds:ListTagsForResource",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecrets",
+        "secretsmanager:ListTagsForResource",
+        "sts:GetCallerIdentity",
+      ]
+      Resource = "*"
+    }]
+  })
+}

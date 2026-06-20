@@ -75,6 +75,9 @@ GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行しま�
 - `Atlas Migration Lint`: migration 変更を含む同一リポジトリ PR で Atlas の lint を実行し、結果を PR にコメントする。
 - `Publish Atlas Registry`: `develop` の `migrations/` または `atlas.hcl` の変更後に、
   migration directory を Atlas Registry の `dacpractice` へ公開する。
+- `Terraform Plan`: `infra/terraform/` の内部 branch push で Terraform の format / validate を実行し、
+  OIDC plan role 設定後は `terraform plan` も実行する。設定は
+  [docs/dac-workflow.md#terraform-plan-の-ci-検証](docs/dac-workflow.md#terraform-plan-の-ci-検証) を参照する。
 
 Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
 登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
