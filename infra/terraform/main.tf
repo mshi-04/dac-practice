@@ -399,7 +399,8 @@ resource "aws_iam_role" "github_terraform_plan" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/*"
+          "token.actions.githubusercontent.com:sub"              = "repo:${var.github_repository}:ref:refs/heads/*"
+          "token.actions.githubusercontent.com:job_workflow_ref" = "${var.github_repository}/.github/workflows/terraform-plan.yml@refs/heads/*"
         }
       }
     }]

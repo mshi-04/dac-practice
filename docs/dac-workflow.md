@@ -108,7 +108,8 @@ push で、`terraform fmt -check -recursive`、`terraform init -backend=false`�
 
 `AWS_TERRAFORM_PLAN_ROLE_ARN` には Terraform output
 `github_terraform_plan_role_arn` を設定する。この OIDC role は branch push だけを信頼し、plan に
-必要な AWS resource の read action に限定する。CI は remote state を使わず、apply は実行しない。
+必要な AWS resource の read action に限定する。trust policy は `job_workflow_ref` でも
+`terraform-plan.yml` に限定する。CI は remote state を使わず、apply は実行しない。
 branch に対応する open PR がある場合は、plan の結果を PR コメントへ作成または更新する。
 
 ### 初回運用 runbook
