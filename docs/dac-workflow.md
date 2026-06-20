@@ -1,8 +1,8 @@
-# Database as Code Workflow
+# DaC Workflow
 
 ## 基本方針
 
-このプロジェクトでは、Database as Code を次の 4 層に分けて扱う。
+このプロジェクトでは、DaC を次の 4 層に分けて扱う。
 
 1. AWS resource definition: Aurora cluster、DynamoDB table、network、parameter、backup。
 2. Relational schema migration: Aurora の table、index、constraint、view、function。
@@ -39,7 +39,7 @@
 
 - Aurora schema の source of truth は Atlas migration と schema 定義の組み合わせで扱う。
 - DynamoDB の source of truth は table/index 定義と access pattern 文書で扱う。
-- AWS resource の source of truth は採用した IaC tool の code と state で扱う。
+- AWS resource の source of truth は Terraform の code と state で扱う。
 - AWS console での手動変更は drift として扱い、code に反映するか戻す。
 
 ## Atlas Registry 公開
@@ -62,8 +62,7 @@
 ## 採用 tool の考え方
 
 - Aurora の SQL schema migration には Atlas を使う。
-- Aurora cluster や DynamoDB table など AWS resource には Terraform、AWS CDK、
-  CloudFormation のいずれかを後続で選ぶ。
+- Aurora cluster や DynamoDB table など AWS resource は `infra/` の Terraform で定義する。
 - DynamoDB は SQL migration ではなく、table/index/access pattern の変更として review する。
 
 ## 公式 reference

@@ -10,17 +10,14 @@ code review の対象にする。
 
 ## IaC tool
 
-Terraform、AWS CDK、CloudFormation のどれを使うかは後続で選定する。
+IaC tool は Terraform を採用する。AWS CDK や CloudFormation とは混在させない。
+Terraform code は `infra/` に置く。
 
-選定までは、tool 固有の directory 構成や state backend を固定しない。選定 PR では次を
-文書化する。
-
-- 採用 tool
-- state 管理方法
-- 環境分離の方法
-- plan / diff / deploy command
-- secret 管理方針
-- drift detection 方針
+- state 管理: state は安全な backend に保存し、secret を含めない。
+- 環境分離: 環境ごとに workspace または directory と state を分け、命名と tag を一貫させる。
+- 検証 command: `terraform fmt -check`、`terraform validate`、`terraform plan` を使う。
+- secret 管理: secret、password、token は code・state・repository に置かず、変数や secret manager で扱う。
+- drift detection: `terraform plan` の差分で drift を検知し、code に反映するか戻す。
 
 ## resource design
 

@@ -57,8 +57,7 @@ docker compose up -d db
 atlas migrate apply --env local
 ```
 
-AWS resource 定義を追加した場合は、採用した IaC tool の validate/plan/synth を実行する。
-例:
+`infra/` の Terraform 定義を追加・変更した場合は、次を実行する。
 
 ```powershell
 terraform fmt -check
