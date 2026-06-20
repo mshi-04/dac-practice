@@ -7,13 +7,10 @@ SQL schema migration を分けて review できる状態を目指す。
 
 ## engine
 
-DacPractice では Aurora PostgreSQL-compatible Edition を学習対象にする。
-
-採用判断は [0001. Aurora PostgreSQL-compatible を採用する](../decisions/0001-aurora-postgresql-compatible.md)
-に残す。
+DacPractice では Aurora PostgreSQL-compatible Edition を対象にする。
 
 Aurora MySQL-compatible 固有の SQL、型、extension、migration assumption はこの repo の
-Aurora schema practice では扱わない。
+Aurora schema では扱わない。
 
 ## schema design
 
@@ -33,7 +30,7 @@ Aurora schema practice では扱わない。
 
 ## AWS resource
 
-Aurora cluster 定義では、学習用でも次を意図的に扱う。
+Aurora cluster 定義では、運用に必要な次の項目を明示的に扱う。
 
 - subnet / security group
 - encryption

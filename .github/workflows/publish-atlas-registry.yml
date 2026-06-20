@@ -1,0 +1,50 @@
+name: Publish Atlas Registry
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - atlas.hcl
+      - migrations/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-registry-dacpractice
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish migration directory
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check Atlas Cloud token
+        env:
+          ATLAS_TOKEN: ${{ secrets.ATLAS_TOKEN }}
+        run: |
+          if [ -z "$ATLAS_TOKEN" ]; then
+            echo "ATLAS_TOKEN GitHub Actions Secret must contain an Atlas Cloud Bot token." >&2
+            exit 1
+          fi
+
+      - name: Set up Atlas
+        uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
+
+      - name: Validate migration directory
+        run: atlas migrate validate --dir file://migrations
+
+      - name: Publish to Atlas Registry
+        run: >-
+          atlas migrate push dacpractice
+          --dev-url "docker://postgres/16/dev?search_path=public"
