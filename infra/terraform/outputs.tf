@@ -18,3 +18,31 @@ output "codebuild_project_name" {
 output "github_deploy_role_arn" {
   value = aws_iam_role.github_deploy.arn
 }
+
+output "github_terraform_plan_role_arn" {
+  value = aws_iam_role.github_terraform_plan.arn
+}
+
+output "shopping_cart_table_name" {
+  value = aws_dynamodb_table.shopping_cart.name
+}
+
+output "shopping_cart_table_arn" {
+  value = aws_dynamodb_table.shopping_cart.arn
+}
+
+output "customer_activity_table_name" {
+  value = aws_dynamodb_table.customer_activity.name
+}
+
+output "customer_activity_table_arn" {
+  value = aws_dynamodb_table.customer_activity.arn
+}
+
+output "order_lookup_table_name" {
+  value = aws_dynamodb_table.order_lookup.name
+}
+
+output "order_lookup_table_arn" {
+  value = aws_dynamodb_table.order_lookup.arn
+}

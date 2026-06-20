@@ -44,37 +44,43 @@ Aurora PostgreSQL-compatible schema では、次の aggregate を管理する。
 ## DynamoDB の対象
 
 DynamoDB は relational model をそのまま写さず、次の access pattern を優先して設計する。
-現時点では AWS resource 定義をまだ選定していないため、ここでは table design の候補を
-文書化する。
+Terraform の table 定義は `infra/terraform/dynamodb.tf` に置く。Aurora は注文、在庫、決済の
+source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup cache を担う。
 
 ### ShoppingCart table
 
 - 目的: 顧客または匿名 session の現在のカートを低 latency で読む。
-- Partition key: `cart_owner_id`
-- Sort key: `item_id`
+- Terraform resource: `aws_dynamodb_table.shopping_cart`
+- Partition key（physical attribute）: `cart_owner_id` / `S`
+- Sort key（physical attribute）: `item_id` / `S`
 - 主な access pattern:
   - `cart_owner_id` でカート内 item を一覧する。
   - `cart_owner_id` + `item_id` で数量を更新する。
-  - TTL で一定期間更新のない匿名カートを削除する。
+- TTL: 有効。`expires_at_epoch` を Unix epoch 秒で設定し、一定期間更新のない匿名カートを削除する。
 - 整合性: checkout 直前に Aurora の商品価格と在庫を再確認する。
 
 ### CustomerActivity table
 
 - 目的: 閲覧履歴、検索履歴、商品閲覧 event を時系列で保存する。
-- Partition key: `customer_or_session_id`
-- Sort key: `occurred_at#event_id`
+- Terraform resource: `aws_dynamodb_table.customer_activity`
+- Partition key（physical attribute）: `customer_or_session_id` / `S`
+- Sort key（physical attribute）: `occurred_at_event_id` / `S`。論理表現の `occurred_at#event_id` を
+  Terraform で扱いやすい物理属性名にしたもの。
 - 主な access pattern:
   - 顧客または session ごとの直近 activity を取得する。
-  - TTL で保持期間を制御する。
+- TTL: 有効。`expires_at_epoch` を Unix epoch 秒で設定し、保持期間を制御する。
 - 注意: 分析用途の大規模集計は DynamoDB table scan ではなく、後続で stream/export 先を設計する。
 
 ### OrderLookup table
 
 - 目的: 外部向け注文番号や問い合わせ token から注文 ID を低 latency で解決する。
-- Partition key: `lookup_key`
+- Terraform resource: `aws_dynamodb_table.order_lookup`
+- Partition key（physical attribute）: `lookup_key` / `S`
+- Sort key: なし。
 - 主な access pattern:
   - `ORDER#<order_number>` から Aurora の `orders.id` を取得する。
   - `PAYMENT#<provider>#<provider_payment_id>` から Aurora の `payments.id` を取得する。
+- TTL: 無効。lookup cache の保持期間は仕様未確定のため。
 - 注意: source of truth は Aurora とし、DynamoDB item は lookup cache として扱う。
 
 ## Review 時の注意

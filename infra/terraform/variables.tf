@@ -45,6 +45,40 @@ variable "deletion_protection" {
   default     = true
 }
 
+variable "dynamodb_billing_mode" {
+  description = "Billing mode for DynamoDB tables."
+  type        = string
+  default     = "PAY_PER_REQUEST"
+
+  validation {
+    condition     = var.dynamodb_billing_mode == "PAY_PER_REQUEST"
+    error_message = "This configuration supports PAY_PER_REQUEST only; provisioned capacity requires an explicit capacity design."
+  }
+}
+
+variable "dynamodb_deletion_protection_enabled" {
+  description = "Protect DynamoDB tables from accidental deletion."
+  type        = bool
+  default     = true
+}
+
+variable "dynamodb_table_class" {
+  description = "Table class for DynamoDB tables."
+  type        = string
+  default     = "STANDARD"
+
+  validation {
+    condition     = contains(["STANDARD", "STANDARD_INFREQUENT_ACCESS"], var.dynamodb_table_class)
+    error_message = "dynamodb_table_class must be STANDARD or STANDARD_INFREQUENT_ACCESS."
+  }
+}
+
+variable "dynamodb_ttl_attribute_name" {
+  description = "Unix epoch TTL attribute used by expiring DynamoDB tables."
+  type        = string
+  default     = "expires_at_epoch"
+}
+
 variable "atlas_registry" {
   description = "Atlas Registry migration directory name."
   type        = string

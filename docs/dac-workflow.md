@@ -98,6 +98,20 @@ bootstrap stack は versioning、server-side encryption、public access block �
 `backend.hcl` は Git に含めず、`backend.hcl.example` をコピーして bootstrap で得た bucket 名を設定する。
 検証環境を作る前に、Atlas Registry read token を Terraform が作成する Secrets Manager secret に登録する。
 
+### Terraform plan の CI 検証
+
+`Terraform Plan` workflow は `infra/terraform/` または workflow 自身の変更を含む内部 branch への
+push で、`terraform fmt -check -recursive`、`terraform init -backend=false`、`terraform validate` を
+実行する。AWS 読み取りが必要な `terraform plan` は、repository variables の `AWS_REGION` と
+`AWS_TERRAFORM_PLAN_ROLE_ARN` が設定されている場合だけ実行する。fork PR には AWS credential を
+渡さない。
+
+`AWS_TERRAFORM_PLAN_ROLE_ARN` には Terraform output
+`github_terraform_plan_role_arn` を設定する。この OIDC role は branch push だけを信頼し、plan に
+必要な AWS resource の read action に限定する。trust policy は `job_workflow_ref` でも
+`terraform-plan.yml` に限定する。CI は remote state を使わず、apply は実行しない。
+branch に対応する open PR がある場合は、plan の結果を PR コメントへ作成または更新する。
+
 ### 初回運用 runbook
 
 検証環境の初回構築から手動 deploy までは次の順で実行する。詳細手順とコマンドは README の
@@ -109,7 +123,9 @@ bootstrap stack は versioning、server-side encryption、public access block �
 3. Atlas Registry read token の Secrets Manager 登録: Terraform が作成した secret に token を投入する。
    token 値は Git・workflow・Terraform code に残さない。
 4. GitHub Environment `aurora-verification` 設定: 承認者、`AWS_REGION`、`AWS_DEPLOY_ROLE_ARN`、
-   `CODEBUILD_PROJECT_NAME` を設定する。
+   `CODEBUILD_PROJECT_NAME` を設定する。repository variables には、Terraform output
+   `github_terraform_plan_role_arn` を `AWS_TERRAFORM_PLAN_ROLE_ARN` として、同じ region を
+   `AWS_REGION` として設定する。
 5. 手動 deploy: `Deploy verification Aurora` を `workflow_dispatch` で起動し、公開済み SHA tag を
    入力して承認後に実行する。
 

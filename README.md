@@ -14,6 +14,8 @@ database schema、AWS database resource design、review guidance を code とし
 練習用 domain は EC サイトを想定しています。Aurora schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
 checkout の transaction 境界は [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md) に置いています。
+DynamoDB の ShoppingCart、CustomerActivity、OrderLookup は
+`infra/terraform/dynamodb.tf` で定義しています。設計の詳細は上記 data model を参照してください。
 
 Aurora は Amazon Aurora PostgreSQL-compatible Edition を対象にします。
 local validation では PostgreSQL 16 と Atlas migration を使います。
@@ -23,7 +25,7 @@ local validation では PostgreSQL 16 と Atlas migration を使います。
 - Git
 - Docker: local database validation を使う場合
 - Atlas CLI: Aurora style の relational migration を local で検証する場合
-- AWS IaC tool: 後続で選定
+- Terraform: AWS resource 定義を検証する場合
 
 ## 最初に読む
 
@@ -73,6 +75,9 @@ GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行しま�
 - `Atlas Migration Lint`: migration 変更を含む同一リポジトリ PR で Atlas の lint を実行し、結果を PR にコメントする。
 - `Publish Atlas Registry`: `develop` の `migrations/` または `atlas.hcl` の変更後に、
   migration directory を Atlas Registry の `dacpractice` へ公開する。
+- `Terraform Plan`: `infra/terraform/` の内部 branch push で Terraform の format / validate を実行し、
+  OIDC plan role 設定後は `terraform plan` も実行する。設定は
+  [docs/dac-workflow.md#terraform-plan-の-ci-検証](docs/dac-workflow.md#terraform-plan-の-ci-検証) を参照する。
 
 Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
 登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
