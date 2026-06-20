@@ -218,6 +218,11 @@ resource "aws_kms_alias" "aurora" {
   target_key_id = aws_kms_key.aurora.key_id
 }
 
+resource "aws_cloudwatch_log_group" "aurora_postgresql" {
+  name              = "/aws/rds/cluster/${local.name_prefix}-aurora/postgresql"
+  retention_in_days = var.aurora_log_retention_in_days
+}
+
 resource "aws_rds_cluster" "verification" {
   cluster_identifier              = "${local.name_prefix}-aurora"
   engine                          = "aurora-postgresql"
@@ -236,6 +241,8 @@ resource "aws_rds_cluster" "verification" {
   skip_final_snapshot             = false
   final_snapshot_identifier       = "${local.name_prefix}-final"
   enabled_cloudwatch_logs_exports = ["postgresql"]
+
+  depends_on = [aws_cloudwatch_log_group.aurora_postgresql]
 
   serverlessv2_scaling_configuration {
     min_capacity = var.aurora_min_capacity
@@ -319,8 +326,8 @@ resource "aws_codebuild_project" "atlas_deploy" {
     }
 
     environment_variable {
-      name  = "ATLAS_IMAGE_TAG"
-      value = var.atlas_image_tag
+      name  = "ATLAS_IMAGE_REFERENCE"
+      value = var.atlas_image_reference
     }
 
     environment_variable {
@@ -398,9 +405,8 @@ resource "aws_iam_role" "github_terraform_plan" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
-        StringLike = {
-          "token.actions.githubusercontent.com:sub"              = "repo:${var.github_repository}:ref:refs/heads/*"
-          "token.actions.githubusercontent.com:job_workflow_ref" = "${var.github_repository}/.github/workflows/terraform-plan.yml@refs/heads/*"
+        StringEquals = {
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:terraform-plan"
         }
       }
     }]

@@ -33,6 +33,7 @@ DacPractice は Database as Code を管理するリポジトリです。
 - `AGENTS.md`: repo 全体に効く薄い永続指示。
 - `.agents/skills/`: 作業領域ごとに分けた skill の正本（`aurora-migration`、`dynamodb-modeling`、
   `aws-resource`、`change-review`）。
+- `.codex/skills/`: `.agents/skills/` から同期生成する Codex 用 skill。
 - `.claude/skills/`: `.agents/skills/` から同期生成する Claude Code 用 skill。
 - `docs/claude-code.md`: Claude Code の skill 同期と共通指示の扱い。
 

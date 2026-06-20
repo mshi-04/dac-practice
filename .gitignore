@@ -17,6 +17,7 @@ pgdata/
 
 # Terraform state, provider downloads, and local deployment inputs.
 infra/terraform/.terraform/
+infra/terraform/**/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.*
 infra/terraform/*.tfvars

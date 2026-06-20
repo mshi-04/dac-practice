@@ -9,7 +9,7 @@ phases:
       - export ATLAS_DIRECTORY="atlas://${ATLAS_REGISTRY}:${MIGRATION_TAG}"
   build:
     commands:
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate apply --dry-run --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate apply --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate apply --dry-run --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate apply --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
