@@ -1,0 +1,175 @@
+name: Terraform Plan
+
+on:
+  push:
+    paths:
+      - .github/workflows/terraform-plan.yml
+      - infra/terraform/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Format and validate Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+
+      - name: Initialize Terraform without the remote backend
+        run: terraform -chdir=infra/terraform init -backend=false
+
+      - name: Validate Terraform configuration
+        run: |
+          terraform -chdir=infra/terraform validate
+          terraform -chdir=infra/terraform/plan init -backend=false
+          terraform -chdir=infra/terraform/plan validate
+
+  plan:
+    name: Plan Terraform changes
+    needs: static
+    if: vars.AWS_REGION != '' && vars.AWS_TERRAFORM_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    environment: terraform-plan
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Obtain AWS plan credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-terraform-plan-${{ github.run_id }}
+          role-duration-seconds: 900
+
+      - name: Initialize Terraform without the remote backend
+        run: terraform -chdir=infra/terraform/plan init -backend=false
+
+      - name: Create Terraform plan
+        id: plan
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set +e
+          terraform -chdir=infra/terraform/plan plan \
+            -no-color \
+            -input=false \
+            -lock=false \
+            -var "aws_region=$AWS_REGION" \
+            2>&1 | tee "$RUNNER_TEMP/terraform-plan.txt"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -eq 0 ]; then
+            echo "outcome=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=failure" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update pull request with Terraform plan
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PLAN_OUTCOME: ${{ steps.plan.outputs.outcome }}
+          PLAN_PATH: ${{ runner.temp }}/terraform-plan.txt
+          HEAD_REF: ${{ github.ref_name }}
+        with:
+          script: |
+            const fs = require('fs');
+            const MAX_BODY_LENGTH = 60000;
+            const marker = '<!-- terraform-plan -->';
+            const plan = fs.readFileSync(process.env.PLAN_PATH, 'utf8');
+
+            function sanitize(text) {
+              return text
+                .replace(/\b\d{12}\b/g, '***')
+                .replace(/arn:aws[a-zA-Z-]*:[a-zA-Z0-9-]+:\S+/g, (match) =>
+                  match.replace(/\b\d{12}\b/g, '***')
+                )
+                .replace(/(?:AKIA|ASIA)[A-Z0-9]{16}/g, '***')
+                .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '***');
+            }
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${process.env.HEAD_REF}`,
+              per_page: 100,
+            });
+            const pull = pulls[0];
+            if (!pull) {
+              core.info(`No open pull request found for ${process.env.HEAD_REF}; skipping comment.`);
+              return;
+            }
+
+            let body = `#### Terraform Plan \`${process.env.PLAN_OUTCOME}\`
+
+            <details><summary>Show plan output</summary>
+
+            \`\`\`
+            ${sanitize(plan)}
+            \`\`\`
+
+            </details>
+            ${marker}`;
+
+            if (body.length > MAX_BODY_LENGTH) {
+              body = `${body.substring(0, MAX_BODY_LENGTH)}\n\nOutput truncated.\n${marker}`;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pull.number,
+              per_page: 100,
+            });
+            const existingComment = comments.find(
+              (comment) =>
+                comment.user?.login === 'github-actions[bot]' &&
+                typeof comment.body === 'string' &&
+                comment.body.includes(marker)
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pull.number,
+                body,
+              });
+            }
+
+      - name: Fail when Terraform plan fails
+        if: steps.plan.outputs.outcome == 'failure'
+        run: exit 1

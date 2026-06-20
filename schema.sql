@@ -81,7 +81,8 @@ CREATE TABLE orders (
   total_amount NUMERIC(12, 2) NOT NULL CHECK (total_amount >= 0),
   placed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (total_amount = subtotal_amount + shipping_fee_amount + tax_amount)
 );
 
 CREATE INDEX orders_customer_id_placed_at_idx ON orders (customer_id, placed_at DESC);

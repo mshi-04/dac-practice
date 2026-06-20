@@ -18,7 +18,7 @@ DacPractice は Database as Code を管理するリポジトリです。
 - Relational database: Amazon Aurora PostgreSQL-compatible Edition
 - Key-value / document database: Amazon DynamoDB
 - Relational schema migration: Atlas
-- AWS resource definition: Terraform、AWS CDK、CloudFormation のいずれかを後続で選定する
+- AWS resource definition: Terraform
 - Local validation target: Docker Compose などの local database を必要に応じて使う
 - Repository hosting: GitHub
 
@@ -28,9 +28,14 @@ DacPractice は Database as Code を管理するリポジトリです。
 - `migrations/`: Aurora 向けの versioned migration。
 - `schema.sql`: Aurora PostgreSQL-compatible の relational schema 定義。後続で配置を見直してよい。
 - `atlas.hcl`: Atlas の local environment と migration 設定。
+- `infra/`: Terraform による AWS resource 定義。
 - `docker-compose.yml`: local 検証環境。AWS 実リソースの代替ではない。
 - `AGENTS.md`: repo 全体に効く薄い永続指示。
-- `.agents/skills/dac-practice/SKILL.md`: DacPractice 作業用 skill。
+- `.agents/skills/`: 作業領域ごとに分けた skill の正本（`aurora-migration`、`dynamodb-modeling`、
+  `aws-resource`、`change-review`）。
+- `.codex/skills/`: `.agents/skills/` から同期生成する Codex 用 skill。
+- `.claude/skills/`: `.agents/skills/` から同期生成する Claude Code 用 skill。
+- `docs/claude-code.md`: Claude Code の skill 同期と共通指示の扱い。
 
 ## ブランチ運用
 

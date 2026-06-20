@@ -1,4 +1,4 @@
-# EC Checkout Workflow
+# EC Checkout
 
 ## 目的
 
@@ -20,6 +20,11 @@ EC サイトの checkout は、カート、注文、在庫、決済、配送の�
 5. `inventory_items.reserved_quantity` を増やし、`inventory_reservations` と `inventory_movements` を作成する。
 6. 決済 provider の authorization 結果を `payments` と `payment_events` に記録する。
 7. 成功時は transaction を commit し、DynamoDB のカートを削除または checkout 済みに更新する。
+
+在庫確認と引当は同じ Aurora transaction 内で直列化する。`inventory_items` を
+`SELECT ... FOR UPDATE` で lock するか、`available_quantity - reserved_quantity >= :quantity` を
+条件にした単一の `UPDATE` を使う。更新件数が 0 件なら在庫不足として transaction を rollback
+し、read と write の間に別 checkout が割り込んでも oversell しない。
 
 ## 失敗時の扱い
 
