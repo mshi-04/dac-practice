@@ -60,6 +60,8 @@ DynamoDB では、少なくとも次を code review 対象にする。
 - Streams
 - resource policy
 - tags
+- partition key の cardinality と hot partition のリスク
+- item size と 400 KB の item size 上限
 
 ## drift
 

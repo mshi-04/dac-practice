@@ -14,6 +14,8 @@ database schema、AWS database resource design、review guidance を code とし
 練習用 domain は EC サイトを想定しています。Aurora schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
 checkout の transaction 境界は [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md) に置いています。
+DynamoDB の ShoppingCart、CustomerActivity、OrderLookup は
+`infra/terraform/dynamodb.tf` で定義しています。設計の詳細は上記 data model を参照してください。
 
 Aurora は Amazon Aurora PostgreSQL-compatible Edition を対象にします。
 local validation では PostgreSQL 16 と Atlas migration を使います。
@@ -23,7 +25,7 @@ local validation では PostgreSQL 16 と Atlas migration を使います。
 - Git
 - Docker: local database validation を使う場合
 - Atlas CLI: Aurora style の relational migration を local で検証する場合
-- AWS IaC tool: 後続で選定
+- Terraform: AWS resource 定義を検証する場合
 
 ## 最初に読む
 
