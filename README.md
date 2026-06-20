@@ -13,7 +13,7 @@ database schema、AWS database resource design、review guidance を code とし
 
 練習用 domain は EC サイトを想定しています。Aurora schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
-checkout の transaction 境界は [docs/ecommerce-checkout-workflow.md](docs/ecommerce-checkout-workflow.md) に置いています。
+checkout の transaction 境界は [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md) に置いています。
 
 Aurora は Amazon Aurora PostgreSQL-compatible Edition を対象にします。
 local validation では PostgreSQL 16 と Atlas migration を使います。
@@ -29,12 +29,12 @@ local validation では PostgreSQL 16 と Atlas migration を使います。
 
 - [AGENTS.md](AGENTS.md)
 - [docs/project-context.md](docs/project-context.md)
-- [docs/database-as-code-workflow.md](docs/database-as-code-workflow.md)
+- [docs/dac-workflow.md](docs/dac-workflow.md)
 - [docs/aws-resource-guidelines.md](docs/aws-resource-guidelines.md)
 - [docs/aurora-guidelines.md](docs/aurora-guidelines.md)
 - [docs/dynamodb-guidelines.md](docs/dynamodb-guidelines.md)
 - [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md)
-- [docs/ecommerce-checkout-workflow.md](docs/ecommerce-checkout-workflow.md)
+- [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md)
 - [docs/change-review-guidelines.md](docs/change-review-guidelines.md)
 
 ## Aurora Local Validation
@@ -76,7 +76,7 @@ GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行しま�
 
 Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
 登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
-[docs/database-as-code-workflow.md#atlas-registry-公開](docs/database-as-code-workflow.md#atlas-registry-公開) と
+[docs/dac-workflow.md#atlas-registry-公開](docs/dac-workflow.md#atlas-registry-公開) と
 [docs/change-review-guidelines.md#ci-の扱い](docs/change-review-guidelines.md#ci-の扱い) を参照してください。
 
 ## Verification Aurora Deployment

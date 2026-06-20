@@ -1,4 +1,4 @@
-# EC Checkout Workflow
+# EC Checkout
 
 ## 目的
 
