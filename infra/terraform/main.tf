@@ -2,6 +2,54 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "aurora_kms" {
+  statement {
+    sid    = "EnableAccountAdministration"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowRdsUse"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["rds.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey",
+      "kms:Encrypt",
+      "kms:GenerateDataKey*",
+      "kms:CreateGrant",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["rds.${var.aws_region}.amazonaws.com"]
+    }
+  }
+}
+
 locals {
   name_prefix = "${var.project_name}-verification"
   azs         = slice(data.aws_availability_zones.available.names, 0, 2)
@@ -101,30 +149,6 @@ resource "aws_security_group" "codebuild" {
   name        = "${local.name_prefix}-codebuild"
   description = "Outbound access for the Atlas deployment build."
   vpc_id      = aws_vpc.verification.id
-
-  egress {
-    description = "HTTPS to Atlas Registry, container registries, and AWS APIs"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description = "DNS over UDP"
-    from_port   = 53
-    to_port     = 53
-    protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description = "DNS over TCP"
-    from_port   = 53
-    to_port     = 53
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
 resource "aws_security_group" "aurora" {
@@ -150,6 +174,33 @@ resource "aws_vpc_security_group_egress_rule" "codebuild_to_aurora" {
   ip_protocol                  = "tcp"
 }
 
+resource "aws_vpc_security_group_egress_rule" "codebuild_https" {
+  description       = "HTTPS to Atlas Registry, container registries, and AWS APIs"
+  security_group_id = aws_security_group.codebuild.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "codebuild_dns_udp" {
+  description       = "DNS over UDP"
+  security_group_id = aws_security_group.codebuild.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 53
+  to_port           = 53
+  ip_protocol       = "udp"
+}
+
+resource "aws_vpc_security_group_egress_rule" "codebuild_dns_tcp" {
+  description       = "DNS over TCP"
+  security_group_id = aws_security_group.codebuild.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 53
+  to_port           = 53
+  ip_protocol       = "tcp"
+}
+
 resource "aws_db_subnet_group" "aurora" {
   name       = "${local.name_prefix}-aurora"
   subnet_ids = values(aws_subnet.private)[*].id
@@ -159,6 +210,7 @@ resource "aws_kms_key" "aurora" {
   description             = "Encryption key for verification Aurora storage."
   deletion_window_in_days = 7
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.aurora_kms.json
 }
 
 resource "aws_kms_alias" "aurora" {
