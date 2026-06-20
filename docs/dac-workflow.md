@@ -68,6 +68,24 @@ table や access pattern は Atlas の対象外であり、別の resource 定�
 Registry の publish token と、CodeBuild が読む Registry token は分離する。DB 接続情報と
 Registry read token は AWS Secrets Manager に保存し、GitHub Actions には保存しない。
 
+### 公開済み tag の手動再デプロイ
+
+`Deploy verification Aurora` workflow は、自動経路（`Publish Atlas Registry` 成功後の
+`workflow_run`）に加えて `workflow_dispatch` の手動経路を持つ。
+
+- 用途: Terraform / GitHub Environment / Secrets の初回設定後に、既に Atlas Registry へ
+  公開済みの immutable SHA tag を検証 Aurora へ適用・検証する。新しい migration は追加しない。
+- 入力値: 必須 input `migration_tag` に、Atlas Registry へ公開済みの immutable commit SHA tag を
+  渡す。受け付けるのは 40桁の小文字16進数のみで、空文字や形式違反は CodeBuild 起動前に失敗させる。
+- 承認: 手動経路も GitHub Environment `aurora-verification` の承認を必ず通す。
+- 実行内容: 承認後、自動経路と同じく VPC 内 CodeBuild が同一 SHA tag を status、dry-run、apply、
+  status の順に実行する。
+- 重複実装の回避: migration tag の決定だけを event ごとに分岐し、手動実行時は input の
+  `migration_tag`、自動実行時は `github.event.workflow_run.head_sha` を `MIGRATION_TAG` として
+  CodeBuild に渡す。deployment 処理は共通とする。
+- 自動経路の制約は維持する。`workflow_run` は成功した `Publish Atlas Registry`、`push` イベント、
+  `develop` branch、同一リポジトリ由来だけを許可する。
+
 ## Terraform による検証 Aurora
 
 `infra/terraform/` は verification 専用の VPC、private Aurora Serverless v2、Secrets Manager、

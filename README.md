@@ -100,6 +100,24 @@ OIDC 経由で CodeBuild を起動し、その tag のみを dry-run・apply・s
 必要な GitHub Environment variables は `AWS_REGION`、`AWS_DEPLOY_ROLE_ARN`、
 `CODEBUILD_PROJECT_NAME` です。
 
+### 手動再デプロイ
+
+Terraform / GitHub Environment / Secrets の初回設定後に、既に Atlas Registry へ公開済みの
+immutable SHA tag を検証 Aurora へ再適用したい場合は、`Deploy verification Aurora` workflow を
+`workflow_dispatch`（手動実行）で起動します。新しい migration は追加しません。
+
+- 用途: 初回セットアップ直後の動作確認や、公開済み tag の検証 Aurora への再適用。
+- 入力値 `migration_tag`: Atlas Registry に公開済みの immutable commit SHA tag。
+  40桁の小文字16進数のみを受け付けます。空文字や形式違反は CodeBuild 起動前に失敗します。
+- 承認: GitHub Environment `aurora-verification` の承認を必ず通過します。承認後に CodeBuild が
+  同一 tag を status・dry-run・apply・status の順に実行します。
+- 実行手順: GitHub の Actions タブで `Deploy verification Aurora` を開き、`Run workflow` から
+  `migration_tag` に対象の SHA tag を入力して実行し、Environment の承認を行います。
+
+自動経路（`Publish Atlas Registry` 成功後の `workflow_run`）と手動経路は、migration tag の
+決定だけを event ごとに分岐し、CodeBuild への適用処理は共通です。GitHub-hosted runner から
+Aurora へ直接接続しません。
+
 ## 構成
 
 ```text
