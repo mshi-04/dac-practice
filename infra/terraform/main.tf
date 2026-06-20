@@ -412,29 +412,64 @@ resource "aws_iam_role_policy" "github_terraform_plan" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "codebuild:BatchGetProjects",
-        "codebuild:ListTagsForResource",
-        "dynamodb:DescribeTable",
-        "dynamodb:ListTables",
-        "dynamodb:ListTagsOfResource",
-        "ec2:Describe*",
-        "iam:Get*",
-        "iam:List*",
-        "kms:Describe*",
-        "kms:GetKeyPolicy",
-        "kms:GetKeyRotationStatus",
-        "kms:List*",
-        "rds:Describe*",
-        "rds:ListTagsForResource",
-        "secretsmanager:DescribeSecret",
-        "secretsmanager:ListSecrets",
-        "secretsmanager:ListTagsForResource",
-        "sts:GetCallerIdentity",
-      ]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Sid    = "ReadAccountMetadata"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:ListTables",
+          "ec2:Describe*",
+          "iam:Get*",
+          "iam:List*",
+          "kms:List*",
+          "rds:Describe*",
+          "rds:ListTagsForResource",
+          "secretsmanager:ListSecrets",
+          "sts:GetCallerIdentity",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ReadDynamoDBTables"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:DescribeTable",
+          "dynamodb:ListTagsOfResource",
+        ]
+        Resource = [
+          aws_dynamodb_table.shopping_cart.arn,
+          aws_dynamodb_table.customer_activity.arn,
+          aws_dynamodb_table.order_lookup.arn,
+        ]
+      },
+      {
+        Sid    = "ReadCodeBuildProject"
+        Effect = "Allow"
+        Action = [
+          "codebuild:BatchGetProjects",
+          "codebuild:ListTagsForResource",
+        ]
+        Resource = aws_codebuild_project.atlas_deploy.arn
+      },
+      {
+        Sid    = "ReadAuroraEncryptionKey"
+        Effect = "Allow"
+        Action = [
+          "kms:DescribeKey",
+          "kms:GetKeyPolicy",
+          "kms:GetKeyRotationStatus",
+        ]
+        Resource = aws_kms_key.aurora.arn
+      },
+      {
+        Sid    = "ReadRegistryTokenSecretMetadata"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:ListTagsForResource",
+        ]
+        Resource = aws_secretsmanager_secret.atlas_registry_token.arn
+      },
+    ]
   })
 }
