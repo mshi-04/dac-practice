@@ -10,8 +10,6 @@ Codex は `.codex/skills/<skill-name>/SKILL.md`、Claude Code は
 ```powershell
 .\scripts\sync-claude-skills.ps1
 .\scripts\sync-claude-skills.ps1 -Check
-.\scripts\sync-codex-skills.ps1
-.\scripts\sync-codex-skills.ps1 -Check
 ```
 
 skill を追加・変更・削除した場合は、同期後に生成された `.codex/skills/` と
