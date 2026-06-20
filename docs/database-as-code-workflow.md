@@ -63,7 +63,7 @@ table や access pattern は Atlas の対象外であり、別の resource 定�
 3. PR CI で checksum、schema validate、lint、最新 version を対象とする migration test、空の PostgreSQL への apply、
    applied schema と desired state の diff を確認する。
 4. `develop` マージ後に migration directory を `dacpractice:<commit-sha>` として Atlas Registry に公開する。
-5. GitHub Environment の承認後、VPC 内 CodeBuild が Registry の同一 SHA tag を dry-run、apply、status の順に実行する。
+5. GitHub Environment の承認後、VPC 内 CodeBuild が Registry の同一 SHA tag を status、dry-run、apply、status の順に実行する。
 
 Registry の publish token と、CodeBuild が読む Registry token は分離する。DB 接続情報と
 Registry read token は AWS Secrets Manager に保存し、GitHub Actions には保存しない。

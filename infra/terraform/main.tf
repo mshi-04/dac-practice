@@ -103,9 +103,26 @@ resource "aws_security_group" "codebuild" {
   vpc_id      = aws_vpc.verification.id
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTPS to Atlas Registry, container registries, and AWS APIs"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "DNS over UDP"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "DNS over TCP"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
@@ -124,9 +141,29 @@ resource "aws_security_group" "aurora" {
   }
 }
 
+resource "aws_vpc_security_group_egress_rule" "codebuild_to_aurora" {
+  description                  = "PostgreSQL to verification Aurora"
+  security_group_id            = aws_security_group.codebuild.id
+  referenced_security_group_id = aws_security_group.aurora.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
 resource "aws_db_subnet_group" "aurora" {
   name       = "${local.name_prefix}-aurora"
   subnet_ids = values(aws_subnet.private)[*].id
+}
+
+resource "aws_kms_key" "aurora" {
+  description             = "Encryption key for verification Aurora storage."
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
+resource "aws_kms_alias" "aurora" {
+  name          = "alias/${local.name_prefix}-aurora"
+  target_key_id = aws_kms_key.aurora.key_id
 }
 
 resource "aws_rds_cluster" "verification" {
@@ -139,6 +176,7 @@ resource "aws_rds_cluster" "verification" {
   db_subnet_group_name            = aws_db_subnet_group.aurora.name
   vpc_security_group_ids          = [aws_security_group.aurora.id]
   storage_encrypted               = true
+  kms_key_id                      = aws_kms_key.aurora.arn
   backup_retention_period         = 7
   preferred_backup_window         = "18:00-18:30"
   preferred_maintenance_window    = "sun:19:00-sun:19:30"
