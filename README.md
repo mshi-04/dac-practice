@@ -83,15 +83,37 @@ Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の 
 
 `infra/terraform/` は Aurora PostgreSQL-compatible Serverless v2 と、VPC 内で Atlas を
 実行する CodeBuild を定義します。Aurora は private subnet に置き、GitHub-hosted runner から
-直接接続しません。Terraform state 用の S3 backend は bootstrap 済みであることが前提です。
+直接接続しません。Terraform state 用の S3 backend は `infra/terraform/bootstrap/` で先に作成します。
+
+#### 1. State bucket の bootstrap
+
+`infra/terraform/bootstrap/` は main stack の remote state を保存する S3 bucket を作成します。
+versioning、server-side encryption、public access block を有効にし、非 TLS access を拒否します。
+この stack は state bucket 自体を作るため local state を使い、backend block を持ちません。
+
+```powershell
+Set-Location infra/terraform/bootstrap
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan -var "aws_region=<region>" -var "state_bucket_name=<globally-unique-bucket>"
+terraform apply -var "aws_region=<region>" -var "state_bucket_name=<globally-unique-bucket>"
+```
+
+`backend.hcl` 自体は Git 管理しません。bootstrap で出力した bucket 名を `backend.hcl` に書き、
+main Terraform を初期化します。
+
+#### 2. Main stack の初期化と plan/apply
 
 ```powershell
 Set-Location infra/terraform
 Copy-Item backend.hcl.example backend.hcl
+# backend.hcl の bucket に bootstrap で作成した bucket 名を設定する。
 terraform init -backend-config=backend.hcl
 terraform fmt -check
 terraform validate
 terraform plan -var "aws_region=<region>"
+terraform apply -var "aws_region=<region>"
 ```
 
 `develop` の migration 変更は SHA tag 付きで Atlas Registry に公開されます。続く
@@ -117,6 +139,45 @@ immutable SHA tag を検証 Aurora へ再適用したい場合は、`Deploy veri
 自動経路（`Publish Atlas Registry` 成功後の `workflow_run`）と手動経路は、migration tag の
 決定だけを event ごとに分岐し、CodeBuild への適用処理は共通です。GitHub-hosted runner から
 Aurora へ直接接続しません。
+
+### 初回運用 runbook
+
+検証環境を最初に立ち上げ、手動 deploy で公開済み tag を適用するまでの実行順です。
+
+1. **State bootstrap**: `infra/terraform/bootstrap/` を apply し、state bucket を作成する。
+2. **Terraform plan / apply**: bucket 名を `backend.hcl` に設定して main stack を init し、
+   plan で差分を確認してから apply する。Aurora、VPC、NAT gateway、CodeBuild、OIDC role、
+   Secrets Manager secret などが作成される。
+3. **Atlas Registry read token の Secrets Manager 登録**: Terraform が作成した
+   `atlas_registry_token_secret_arn` の secret に、Atlas Cloud の Registry read token を投入する。
+   token 値は Git・workflow・Terraform code には残さない。
+4. **GitHub Environment 設定**: `aurora-verification` Environment を作成し、必須項目を設定する。
+   - 承認者（required reviewers）を最低 1 名設定する。
+   - Environment variable `AWS_REGION`: 検証環境の region。
+   - Environment variable `AWS_DEPLOY_ROLE_ARN`: Terraform 出力 `github_deploy_role_arn`。
+   - Environment variable `CODEBUILD_PROJECT_NAME`: Terraform 出力 `codebuild_project_name`。
+5. **手動 deploy**: `Deploy verification Aurora` workflow を `workflow_dispatch` で起動し、
+   `migration_tag` に公開済みの immutable SHA tag を入力して、承認後に実行する。
+
+#### 初回 deploy の成功確認
+
+- **GitHub Actions**: `Deploy verification Aurora` の run が success で完了する。
+- **CodeBuild CloudWatch Logs**: status → dry-run → apply → status の各コマンドが成功している。
+- **Atlas migration status**: CodeBuild log の `migrate status` が pending migration なしを示す。
+- **Aurora の migration revision table**: Aurora 上の Atlas revision table（`atlas_schema_revisions`）に
+  適用済み version が記録されている。
+
+#### 費用・破棄時の注意
+
+- **Aurora Serverless v2**: 最小 ACU でも常時課金される。検証が不要な間は破棄を検討する。
+- **NAT gateway**: 時間課金とデータ処理課金が発生する。private subnet の CodeBuild が
+  Atlas Registry / image 取得に使うため、稼働中は維持コストがかかる。
+- **backup retention**: Aurora の自動 backup は retention 期間中 storage 課金が続く。破棄時は
+  保持された snapshot / backup を確認する。
+- **KMS key**: Aurora 暗号化用の customer managed key は月額課金がある。`terraform destroy`
+  では削除予約（waiting period）となり、即時削除されない。
+- **deletion protection**: cluster は `deletion_protection = true`。破棄するには先に
+  `-var "deletion_protection=false"` で apply してから destroy する。
 
 ## 構成
 

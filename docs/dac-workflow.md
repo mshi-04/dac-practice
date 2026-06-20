@@ -92,9 +92,31 @@ Registry read token は AWS Secrets Manager に保存し、GitHub Actions には
 CodeBuild、GitHub OIDC role を管理する。CodeBuild だけが Aurora の PostgreSQL port に接続できる。
 private subnet の CodeBuild は Atlas Registry と container image を取得するため NAT gateway を経由する。
 
-Terraform state backend は別途 bootstrap した暗号化 S3 bucket を使う。`backend.hcl` は Git に
-含めず、`backend.hcl.example` をコピーして使用する。検証環境を作る前に、Atlas Registry read token を
-Terraform が作成する Secrets Manager secret に登録する。
+Terraform state backend は `infra/terraform/bootstrap/` で作成した暗号化 S3 bucket を使う。
+bootstrap stack は versioning、server-side encryption、public access block を有効にし、
+非 TLS access を拒否する。state bucket 自体を作るため local state を使い backend block を持たない。
+`backend.hcl` は Git に含めず、`backend.hcl.example` をコピーして bootstrap で得た bucket 名を設定する。
+検証環境を作る前に、Atlas Registry read token を Terraform が作成する Secrets Manager secret に登録する。
+
+### 初回運用 runbook
+
+検証環境の初回構築から手動 deploy までは次の順で実行する。詳細手順とコマンドは README の
+「初回運用 runbook」を参照する。
+
+1. State bootstrap: `infra/terraform/bootstrap/` を apply し、state 用 S3 bucket を作成する。
+2. Terraform plan / apply: bucket 名を `backend.hcl` に設定して main stack を init し、
+   plan を確認してから apply する。
+3. Atlas Registry read token の Secrets Manager 登録: Terraform が作成した secret に token を投入する。
+   token 値は Git・workflow・Terraform code に残さない。
+4. GitHub Environment `aurora-verification` 設定: 承認者、`AWS_REGION`、`AWS_DEPLOY_ROLE_ARN`、
+   `CODEBUILD_PROJECT_NAME` を設定する。
+5. 手動 deploy: `Deploy verification Aurora` を `workflow_dispatch` で起動し、公開済み SHA tag を
+   入力して承認後に実行する。
+
+初回 deploy の成功は、GitHub Actions の run 結果、CodeBuild の CloudWatch Logs、Atlas の
+`migrate status`、Aurora の Atlas revision table（`atlas_schema_revisions`）で確認する。
+Aurora Serverless v2、NAT gateway、backup retention、KMS key は稼働中・破棄時の費用に影響するため、
+不要時は破棄を検討する。`deletion_protection` を有効にしているため、破棄前に無効化が必要になる。
 
 ## Migration file format
 
