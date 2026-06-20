@@ -1,0 +1,15 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - test -n "$MIGRATION_TAG"
+      - export ATLAS_TOKEN="$(aws secretsmanager get-secret-value --secret-id "$ATLAS_TOKEN_SECRET_ID" --query SecretString --output text)"
+      - export DATABASE_URL="$(aws secretsmanager get-secret-value --secret-id "$DATABASE_SECRET_ID" --query SecretString --output text | python3 -c 'import json, sys, urllib.parse; s=json.load(sys.stdin); print("postgres://{}:{}@{}:{}/{}?sslmode=require&search_path=public".format(urllib.parse.quote(s["username"], safe=""), urllib.parse.quote(s["password"], safe=""), s["host"], s["port"], s["dbname"]))')"
+      - export ATLAS_DIRECTORY="atlas://${ATLAS_REGISTRY}:${MIGRATION_TAG}"
+  build:
+    commands:
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate apply --dry-run --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate apply --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "arigaio/atlas:${ATLAS_IMAGE_TAG}" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"

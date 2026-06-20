@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-  push:
+    types: [opened, synchronize, reopened]
     branches:
       - main
       - develop
@@ -48,12 +48,37 @@ jobs:
 
       - name: Set up Atlas
         uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
 
       - name: Show Atlas version
         run: atlas version
 
       - name: Validate migrations
-        run: atlas migrate validate --env local
+        run: atlas migrate validate --env ci
+
+      - name: Validate desired schema
+        run: atlas schema validate --env ci
+
+      - name: Test migrations
+        run: |
+          latest_version="$(find migrations -maxdepth 1 -name '*.sql' -printf '%f\n' | sort | tail -n 1 | cut -d_ -f1)"
+          test -n "$latest_version"
+          sed "s/__LATEST_MIGRATION__/$latest_version/" migrate.test.hcl > "$RUNNER_TEMP/migrate.test.hcl"
+          atlas migrate test --env ci "$RUNNER_TEMP/migrate.test.hcl"
 
       - name: Apply migrations to local PostgreSQL
-        run: atlas migrate apply --env local
+        run: atlas migrate apply --env ci
+
+      - name: Confirm migration directory matches desired schema
+        run: |
+          diff="$(atlas schema diff \
+            --from file://migrations \
+            --to file://schema.sql \
+            --dev-url "docker://postgres/16/dev?search_path=public" \
+            --format '{{ sql . }}')"
+          if [ -n "$diff" ]; then
+            printf '%s\n' "$diff"
+            echo "Migration directory does not match schema.sql." >&2
+            exit 1
+          fi

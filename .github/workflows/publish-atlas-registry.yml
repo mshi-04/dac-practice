@@ -46,5 +46,5 @@ jobs:
 
       - name: Publish to Atlas Registry
         run: >-
-          atlas migrate push dacpractice
+          atlas migrate push dacpractice:${{ github.sha }}
           --dev-url "docker://postgres/16/dev?search_path=public"

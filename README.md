@@ -53,11 +53,24 @@ atlas migrate apply --env local
 review 可能な SQL migration を置きます。`atlas.hcl` は target database URL を
 `DATABASE_URL` から読むため、credential を Atlas 設定に保存しません。
 
+schema を変更するときは、`schema.sql` を先に更新し、Atlas で migration を生成します。
+共有環境に適用済みの migration は編集せず、修正は新しい forward migration で行います。
+
+```powershell
+atlas migrate diff --env local "change_description"
+atlas migrate lint --env local --latest 1
+latestVersion = (Get-ChildItem migrations/*.sql | Sort-Object Name | Select-Object -Last 1).BaseName.Split('_')[0]
+(Get-Content -Raw migrate.test.hcl).Replace('__LATEST_MIGRATION__', $latestVersion) | Set-Content "$env:TEMP/migrate.test.hcl"
+atlas migrate test --env local "$env:TEMP/migrate.test.hcl"
+atlas migrate validate --env local
+```
+
 ## CI
 
 GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行します。
 
-- `CI`: PR と `main` / `develop` への push で migration の検証と local PostgreSQL への適用を行う。
+- `CI`: `main` / `develop` 向け PR で migration の検証と local PostgreSQL への適用を行う。
+- `Atlas Migration Lint`: migration 変更を含む同一リポジトリ PR で Atlas の lint を実行し、結果を PR にコメントする。
 - `Publish Atlas Registry`: `develop` の `migrations/` または `atlas.hcl` の変更後に、
   migration directory を Atlas Registry の `dacpractice` へ公開する。
 
@@ -65,6 +78,27 @@ Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の 
 登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
 [docs/database-as-code-workflow.md#atlas-registry-公開](docs/database-as-code-workflow.md#atlas-registry-公開) と
 [docs/change-review-guidelines.md#ci-の扱い](docs/change-review-guidelines.md#ci-の扱い) を参照してください。
+
+## Verification Aurora Deployment
+
+`infra/terraform/` は Aurora PostgreSQL-compatible Serverless v2 と、VPC 内で Atlas を
+実行する CodeBuild を定義します。Aurora は private subnet に置き、GitHub-hosted runner から
+直接接続しません。Terraform state 用の S3 backend は bootstrap 済みであることが前提です。
+
+```powershell
+Set-Location infra/terraform
+Copy-Item backend.hcl.example backend.hcl
+terraform init -backend-config=backend.hcl
+terraform fmt -check
+terraform validate
+terraform plan -var "aws_region=<region>"
+```
+
+`develop` の migration 変更は SHA tag 付きで Atlas Registry に公開されます。続く
+`Deploy verification Aurora` workflow は GitHub Environment `aurora-verification` の承認後、
+OIDC 経由で CodeBuild を起動し、その tag のみを dry-run・apply・status の順に実行します。
+必要な GitHub Environment variables は `AWS_REGION`、`AWS_DEPLOY_ROLE_ARN`、
+`CODEBUILD_PROJECT_NAME` です。
 
 ## 構成
 
