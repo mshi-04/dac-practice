@@ -6,6 +6,13 @@ on:
       - Publish Atlas Registry
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      migration_tag:
+        description: >-
+          Atlas Registry に公開済みの immutable commit SHA tag (40桁の小文字16進数)。
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,15 +25,36 @@ jobs:
       group: aurora-verification-deploy
       cancel-in-progress: false
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'develop' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'develop' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     environment: aurora-verification
     timeout-minutes: 45
 
     steps:
+      - name: Resolve and validate migration tag
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_MIGRATION_TAG: ${{ github.event.inputs.migration_tag }}
+          AUTO_MIGRATION_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            migration_tag="$MANUAL_MIGRATION_TAG"
+          else
+            migration_tag="$AUTO_MIGRATION_TAG"
+          fi
+          if ! printf '%s' "$migration_tag" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "migration_tag must be a 40-character lowercase hex commit SHA." >&2
+            exit 1
+          fi
+          echo "migration_tag=$migration_tag" >> "$GITHUB_OUTPUT"
+
       - name: Obtain AWS credentials through GitHub OIDC
         env:
           AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -54,7 +82,7 @@ jobs:
         id: build
         env:
           CODEBUILD_PROJECT_NAME: ${{ vars.CODEBUILD_PROJECT_NAME }}
-          MIGRATION_TAG: ${{ github.event.workflow_run.head_sha }}
+          MIGRATION_TAG: ${{ steps.tag.outputs.migration_tag }}
         run: |
           test -n "$CODEBUILD_PROJECT_NAME"
           build_id="$(aws codebuild start-build \
