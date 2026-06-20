@@ -404,8 +404,6 @@ resource "aws_iam_role" "github_terraform_plan" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        }
-        StringEquals = {
           "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:terraform-plan"
         }
       }
