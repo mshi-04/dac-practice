@@ -1,0 +1,77 @@
+name: Deploy verification Aurora
+
+on:
+  workflow_run:
+    workflows:
+      - Publish Atlas Registry
+    types:
+      - completed
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Apply published Atlas migration
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'develop'
+    runs-on: ubuntu-latest
+    environment: aurora-verification
+    timeout-minutes: 30
+
+    steps:
+      - name: Obtain AWS credentials through GitHub OIDC
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$AWS_REGION"
+          token="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r '.value')"
+          credentials="$(aws sts assume-role-with-web-identity \
+            --role-arn "$AWS_DEPLOY_ROLE_ARN" \
+            --role-session-name "github-atlas-deploy-${{ github.run_id }}" \
+            --web-identity-token "$token" \
+            --duration-seconds 900 \
+            --region "$AWS_REGION")"
+          {
+            echo "AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' <<<"$credentials")"
+            echo "AWS_SECRET_ACCESS_KEY=$(jq -r '.Credentials.SecretAccessKey' <<<"$credentials")"
+            echo "AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' <<<"$credentials")"
+            echo "AWS_REGION=$AWS_REGION"
+          } >> "$GITHUB_ENV"
+
+      - name: Start VPC deployment build
+        id: build
+        env:
+          CODEBUILD_PROJECT_NAME: ${{ vars.CODEBUILD_PROJECT_NAME }}
+          MIGRATION_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test -n "$CODEBUILD_PROJECT_NAME"
+          build_id="$(aws codebuild start-build \
+            --project-name "$CODEBUILD_PROJECT_NAME" \
+            --environment-variables-override \
+              "name=MIGRATION_TAG,value=$MIGRATION_TAG,type=PLAINTEXT" \
+            --query 'build.id' \
+            --output text)"
+          echo "id=$build_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for deployment result
+        env:
+          BUILD_ID: ${{ steps.build.outputs.id }}
+        run: |
+          for attempt in $(seq 1 120); do
+            status="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"
+            echo "CodeBuild status: $status"
+            case "$status" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out waiting for CodeBuild." >&2
+          exit 1

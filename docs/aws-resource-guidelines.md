@@ -10,10 +10,10 @@ code review の対象にする。
 
 ## IaC tool
 
-Terraform、AWS CDK、CloudFormation のどれを使うかは後続で選定する。
+Aurora verification environment には Terraform を使う。`infra/terraform/` が resource の
+source of truth であり、Terraform state は環境専用の暗号化 S3 backend に分離する。
 
-選定までは、tool 固有の directory 構成や state backend を固定しない。選定 PR では次を
-文書化する。
+Terraform の PR では次を文書化する。
 
 - 採用 tool
 - state 管理方法
@@ -21,6 +21,9 @@ Terraform、AWS CDK、CloudFormation のどれを使うかは後続で選定す�
 - plan / diff / deploy command
 - secret 管理方針
 - drift detection 方針
+
+GitHub Actions は OIDC role で CodeBuild の起動と結果取得だけを許可する。Aurora への
+network 接続と Atlas apply は private subnet 内の CodeBuild role が実行する。
 
 ## resource design
 

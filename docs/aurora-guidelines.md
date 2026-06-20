@@ -27,6 +27,9 @@ Aurora schema では扱わない。
 - rename は drop/add として扱われていないか確認する。
 - `NOT NULL`、unique constraint、foreign key の追加は既存 data を考慮する。
 - long-running DDL と lock の影響を確認する。
+- `schema.sql` の変更から `atlas migrate diff` で migration を生成し、生成 SQL を review する。
+- PR では Atlas lint と migration test を通し、`develop` で公開された Registry SHA tag だけを適用する。
+- shared environment の migration failure は rollback の自動実行ではなく forward fix で解消する。
 
 ## AWS resource
 
@@ -39,6 +42,13 @@ Aurora cluster 定義では、運用に必要な次の項目を明示的に扱�
 - parameter group
 - monitoring / logging
 - secret management
+
+## verification deployment
+
+- verification Aurora は private subnet に置き、public endpoint を作らない。
+- GitHub Actions の承認後、VPC 内 CodeBuild が Atlas Registry から immutable SHA tag を取得して apply する。
+- apply 前に dry-run、apply 後に migration status を実行する。
+- Registry read token と Aurora credential は Secrets Manager から取得し、build log に出力しない。
 
 ## blue/green と schema change
 
