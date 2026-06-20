@@ -74,6 +74,9 @@ GitHub Actions では、PR と `main` / `develop` への push で次を確認す
 ```bash
 if git grep -nI -E '[[:blank:]]$' -- .; then exit 1; fi
 atlas migrate validate --env local
+atlas schema validate --env local
+atlas migrate lint --env local --latest 1
+atlas migrate test --env local migrate.test.hcl
 atlas migrate apply --env local
 ```
 
@@ -87,5 +90,13 @@ Atlas Registry への公開は、PR 検証とは別 workflow として扱う。`
 `ATLAS_TOKEN` に保存した Atlas Cloud Bot token を使って `dacpractice` を更新する。PR からの公開、token の平文保存、
 Registry 公開と Aurora への適用の同時実行は行わない。
 
+verification Aurora への適用は、Registry 公開の成功後に別 workflow で起動する。GitHub Environment
+`aurora-verification` の承認、Registry SHA tag、VPC 内 CodeBuild をすべて満たす場合だけ apply する。
+apply job は status、dry-run、apply、status の順に実行し、失敗時は forward fix 用の新規 migration を作る。
+
 GitHub Actions の第三者Actionは full commit SHA に固定する。Dependabot は使わないため、
 Actionの更新はリリースタグを確認した専用のレビュー可能なPRとして手動で行う。
+
+Atlas Migration Lint workflow は migration を変更した同一リポジトリ PR だけを対象に、
+Atlas 公式 Action で lint 結果を PR へコメントする。fork PR には Atlas Cloud token を渡さず、
+この workflow を skip する。Registry 公開と Aurora への適用はこの workflow に含めない。

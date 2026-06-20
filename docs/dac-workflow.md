@@ -53,6 +53,31 @@
 - Registry は migration directory の配布・確認用であり、Aurora への適用は別の
   deployment workflow で明示的に扱う。
 
+## Atlas を使う Aurora lifecycle
+
+Atlas の対象は Aurora PostgreSQL-compatible の relational schema だけとする。DynamoDB の
+table や access pattern は Atlas の対象外であり、別の resource 定義と設計文書で扱う。
+
+1. `schema.sql` を desired state として変更する。
+2. `atlas migrate diff --env local <name>` で versioned migration を生成する。
+3. PR CI で checksum、schema validate、lint、最新 version を対象とする migration test、空の PostgreSQL への apply、
+   applied schema と desired state の diff を確認する。
+4. `develop` マージ後に migration directory を `dacpractice:<commit-sha>` として Atlas Registry に公開する。
+5. GitHub Environment の承認後、VPC 内 CodeBuild が Registry の同一 SHA tag を status、dry-run、apply、status の順に実行する。
+
+Registry の publish token と、CodeBuild が読む Registry token は分離する。DB 接続情報と
+Registry read token は AWS Secrets Manager に保存し、GitHub Actions には保存しない。
+
+## Terraform による検証 Aurora
+
+`infra/terraform/` は verification 専用の VPC、private Aurora Serverless v2、Secrets Manager、
+CodeBuild、GitHub OIDC role を管理する。CodeBuild だけが Aurora の PostgreSQL port に接続できる。
+private subnet の CodeBuild は Atlas Registry と container image を取得するため NAT gateway を経由する。
+
+Terraform state backend は別途 bootstrap した暗号化 S3 bucket を使う。`backend.hcl` は Git に
+含めず、`backend.hcl.example` をコピーして使用する。検証環境を作る前に、Atlas Registry read token を
+Terraform が作成する Secrets Manager secret に登録する。
+
 ## Migration file format
 
 - `migrations/*.sql` と `migrations/atlas.sum` は `.gitattributes` で LF に固定する。

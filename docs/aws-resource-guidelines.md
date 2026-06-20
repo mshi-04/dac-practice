@@ -19,6 +19,9 @@ Terraform code は `infra/` に置く。
 - secret 管理: secret、password、token は code・state・repository に置かず、変数や secret manager で扱う。
 - drift detection: `terraform plan` の差分で drift を検知し、code に反映するか戻す。
 
+GitHub Actions は OIDC role で CodeBuild の起動と結果取得だけを許可する。Aurora への
+network 接続と Atlas apply は private subnet 内の CodeBuild role が実行する。
+
 ## resource design
 
 - 環境ごとに resource 名、tag、state を分離する。

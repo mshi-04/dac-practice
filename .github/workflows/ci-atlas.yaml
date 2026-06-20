@@ -1,0 +1,61 @@
+name: Atlas Migration Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - develop
+    paths:
+      - .github/workflows/ci-atlas.yaml
+      - migrations/**
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint:
+    name: Lint migrations
+    # Atlas Cloud tokens are intentionally unavailable to workflows from forks.
+    if: github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_DB: dev
+          POSTGRES_PASSWORD: app_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d dev"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Atlas
+        uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
+
+      - name: Build pinned Atlas Action binary
+        uses: ariga/atlas-action/setup@e7cdee90ecc06996f1c055bc01a62f03666cecb4 # v1
+
+      - name: Lint migrations
+        uses: ariga/atlas-action/migrate/lint@e7cdee90ecc06996f1c055bc01a62f03666cecb4 # v1
+        with:
+          dir: 'file://migrations'
+          dev-url: 'postgres://app:app_password@localhost:5432/dev?sslmode=disable'
+          dir-name: 'dacpractice'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
