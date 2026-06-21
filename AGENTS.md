@@ -21,7 +21,7 @@
 作業領域ごとに skill を分けている。正本は `.agents/skills/` とする。Codex は正本を直接参照し、
 Claude Code 用の `.claude/skills/` は同期生成する。手順は [docs/claude-code.md](docs/claude-code.md) を参照する。
 
-- [atlas](.codex/skills/atlas/SKILL.md): Atlas 公式文書として取り込んだ schema / migration 操作用 skill。
+- [atlas](.codex/skills/atlas/SKILL.md): Atlas 公式文書として取り込んだ schema / migration 操作用 skill（この skill のみ `.codex/` から直接参照）。
 
 - [aurora-migration](.agents/skills/aurora-migration/SKILL.md): Aurora schema を Atlas で migration。
 - [aws-resource](.agents/skills/aws-resource/SKILL.md): AWS resource を Terraform で定義（`infra/`）。

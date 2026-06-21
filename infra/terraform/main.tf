@@ -73,7 +73,33 @@ data "aws_iam_policy_document" "dynamodb_kms" {
       identifiers = ["dynamodb.amazonaws.com"]
     }
 
-    actions   = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey*", "kms:ReEncrypt*", "kms:CreateGrant"]
+    actions   = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey*", "kms:ReEncrypt*"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["dynamodb.${var.aws_region}.amazonaws.com"]
+    }
+
+  }
+
+  statement {
+    sid    = "AllowDynamoDBCreateGrant"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["dynamodb.amazonaws.com"]
+    }
+
+    actions   = ["kms:CreateGrant"]
     resources = ["*"]
 
     condition {

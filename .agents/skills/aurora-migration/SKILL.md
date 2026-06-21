@@ -30,3 +30,8 @@ Aurora PostgreSQL の relational schema を Atlas の versioned migration で変
 - destructive change（DROP、型変更）と backfill は分割し、安全な順序で段階適用する。
 - migration file を手で編集したら `atlas migrate hash --env local` を実行する。
 - production 適用は別 workflow。rollback ではなく forward fix を基本にする。
+
+## 完了条件
+
+`git diff --check`、`atlas migrate validate --env local`、`atlas migrate lint --env local --latest 1` を実行する。
+apply する場合は dry-run の結果を確認する。実行できない検証は理由を報告する。

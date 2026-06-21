@@ -1,3 +1,20 @@
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "terraform_state_kms" {
+  statement {
+    sid    = "EnableAccountAdministration"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+}
+
 resource "aws_s3_bucket" "terraform_state" {
   bucket = var.state_bucket_name
 }
@@ -6,6 +23,7 @@ resource "aws_kms_key" "terraform_state" {
   description             = "Encryption key for Terraform state."
   deletion_window_in_days = 7
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.terraform_state_kms.json
 }
 
 resource "aws_kms_alias" "terraform_state" {
