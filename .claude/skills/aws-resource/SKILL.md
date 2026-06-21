@@ -28,3 +28,8 @@ Aurora cluster、DynamoDB table、network、parameter、backup などの AWS res
 
 - IaC tool は Terraform に統一し、CDK / CloudFormation と混在させない。
 - AWS console での手動変更は drift として扱い、code に反映するか戻す。
+
+## 完了条件
+
+`git diff --check`、`terraform fmt -check`、`terraform validate` を実行し、`terraform plan` の差分を確認する。
+実行できない検証は理由を報告する。

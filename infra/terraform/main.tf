@@ -50,6 +50,78 @@ data "aws_iam_policy_document" "aurora_kms" {
   }
 }
 
+data "aws_iam_policy_document" "dynamodb_kms" {
+  statement {
+    sid    = "EnableAccountAdministration"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowDynamoDBUse"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["dynamodb.amazonaws.com"]
+    }
+
+    actions   = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey*", "kms:ReEncrypt*"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["dynamodb.${var.aws_region}.amazonaws.com"]
+    }
+
+  }
+
+  statement {
+    sid    = "AllowDynamoDBCreateGrant"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["dynamodb.amazonaws.com"]
+    }
+
+    actions   = ["kms:CreateGrant"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["dynamodb.${var.aws_region}.amazonaws.com"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+      values   = ["true"]
+    }
+  }
+}
+
 locals {
   name_prefix = "${var.project_name}-verification"
   azs         = slice(data.aws_availability_zones.available.names, 0, 2)
@@ -206,6 +278,12 @@ resource "aws_db_subnet_group" "aurora" {
   subnet_ids = values(aws_subnet.private)[*].id
 }
 
+resource "aws_rds_cluster_parameter_group" "aurora" {
+  name        = "${local.name_prefix}-aurora-postgresql16"
+  family      = "aurora-postgresql16"
+  description = "Parameter group for the verification Aurora PostgreSQL cluster."
+}
+
 resource "aws_kms_key" "aurora" {
   description             = "Encryption key for verification Aurora storage."
   deletion_window_in_days = 7
@@ -218,9 +296,26 @@ resource "aws_kms_alias" "aurora" {
   target_key_id = aws_kms_key.aurora.key_id
 }
 
+resource "aws_kms_key" "dynamodb" {
+  description             = "Encryption key for verification DynamoDB tables."
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.dynamodb_kms.json
+}
+
+resource "aws_kms_alias" "dynamodb" {
+  name          = "alias/${local.name_prefix}-dynamodb"
+  target_key_id = aws_kms_key.dynamodb.key_id
+}
+
 resource "aws_cloudwatch_log_group" "aurora_postgresql" {
   name              = "/aws/rds/cluster/${local.name_prefix}-aurora/postgresql"
   retention_in_days = var.aurora_log_retention_in_days
+}
+
+resource "aws_cloudwatch_log_group" "codebuild" {
+  name              = "/aws/codebuild/${local.name_prefix}-atlas-deploy"
+  retention_in_days = var.codebuild_log_retention_in_days
 }
 
 resource "aws_rds_cluster" "verification" {
@@ -231,6 +326,7 @@ resource "aws_rds_cluster" "verification" {
   master_username                 = "atlas_admin"
   manage_master_user_password     = true
   db_subnet_group_name            = aws_db_subnet_group.aurora.name
+  db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.aurora.name
   vpc_security_group_ids          = [aws_security_group.aurora.id]
   storage_encrypted               = true
   kms_key_id                      = aws_kms_key.aurora.arn
@@ -285,13 +381,39 @@ resource "aws_iam_role_policy" "codebuild" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid      = "WriteBuildLogs"
         Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "*"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.codebuild.arn}:*"
       },
       {
+        Sid      = "CreateBuildNetworkInterface"
         Effect   = "Allow"
-        Action   = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeVpcs"]
+        Action   = ["ec2:CreateNetworkInterface"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "ec2:Vpc"           = aws_vpc.verification.arn
+            "ec2:Subnet"        = values(aws_subnet.private)[*].arn
+            "ec2:SecurityGroup" = aws_security_group.codebuild.arn
+          }
+        }
+      },
+      {
+        Sid      = "DeleteBuildNetworkInterface"
+        Effect   = "Allow"
+        Action   = ["ec2:DeleteNetworkInterface"]
+        Resource = "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:network-interface/*"
+        Condition = {
+          StringEquals = {
+            "ec2:Vpc" = aws_vpc.verification.arn
+          }
+        }
+      },
+      {
+        Sid      = "DescribeBuildNetwork"
+        Effect   = "Allow"
+        Action   = ["ec2:DescribeNetworkInterfaces", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups", "ec2:DescribeVpcs"]
         Resource = "*"
       },
       {
@@ -314,9 +436,10 @@ resource "aws_codebuild_project" "atlas_deploy" {
   }
 
   environment {
-    compute_type                = "BUILD_GENERAL1_SMALL"
-    image                       = "aws/codebuild/standard:7.0"
-    type                        = "LINUX_CONTAINER"
+    compute_type = "BUILD_GENERAL1_SMALL"
+    image        = "aws/codebuild/standard:7.0"
+    type         = "LINUX_CONTAINER"
+    # Docker is required to run the digest-pinned Atlas image in this build.
     privileged_mode             = true
     image_pull_credentials_type = "CODEBUILD"
 
@@ -344,6 +467,14 @@ resource "aws_codebuild_project" "atlas_deploy" {
   source {
     type      = "NO_SOURCE"
     buildspec = file("${path.module}/buildspec.yml")
+  }
+
+  logs_config {
+    cloudwatch_logs {
+      group_name  = aws_cloudwatch_log_group.codebuild.name
+      stream_name = "atlas-deploy"
+      status      = "ENABLED"
+    }
   }
 
   vpc_config {

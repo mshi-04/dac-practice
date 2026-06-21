@@ -18,13 +18,11 @@ pgdata/
 # Terraform state, provider downloads, and local deployment inputs.
 infra/terraform/.terraform/
 infra/terraform/**/.terraform/
-infra/terraform/*.tfstate
-infra/terraform/*.tfstate.*
-infra/terraform/*.tfvars
+infra/terraform/**/*.tfstate
+infra/terraform/**/*.tfstate.*
+infra/terraform/**/*.tfvars
+infra/terraform/**/*.tfvars.json
 infra/terraform/backend.hcl
 
 # Bootstrap stack keeps its state local; never commit state or local inputs.
 infra/terraform/bootstrap/.terraform/
-infra/terraform/bootstrap/*.tfstate
-infra/terraform/bootstrap/*.tfstate.*
-infra/terraform/bootstrap/*.tfvars

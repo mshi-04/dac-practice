@@ -63,20 +63,20 @@ jobs:
         run: atlas version
 
       - name: Validate migrations
-        run: atlas migrate validate --env ci
+        run: atlas migrate validate --env local
 
       - name: Validate desired schema
-        run: atlas schema validate --env ci
+        run: atlas schema validate --env local
 
       - name: Test migrations
         run: |
           latest_version="$(find migrations -maxdepth 1 -name '*.sql' -printf '%f\n' | sort | tail -n 1 | cut -d_ -f1)"
           test -n "$latest_version"
           sed "s/__LATEST_MIGRATION__/$latest_version/" migrate.test.hcl > "$RUNNER_TEMP/migrate.test.hcl"
-          atlas migrate test --env ci "$RUNNER_TEMP/migrate.test.hcl"
+          atlas migrate test --env local "$RUNNER_TEMP/migrate.test.hcl"
 
       - name: Apply migrations to local PostgreSQL
-        run: atlas migrate apply --env ci
+        run: atlas migrate apply --env local
 
       - name: Confirm migration directory matches desired schema
         run: |

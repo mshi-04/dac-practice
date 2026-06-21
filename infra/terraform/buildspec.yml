@@ -3,13 +3,25 @@ version: 0.2
 phases:
   pre_build:
     commands:
+      - set +x
       - test -n "$MIGRATION_TAG"
+      - printf '%s' "$MIGRATION_TAG" | grep -Eq '^[0-9a-f]{40}$' || { echo "MIGRATION_TAG must be a 40-character lowercase commit SHA" >&2; exit 2; }
       - export ATLAS_TOKEN="$(aws secretsmanager get-secret-value --secret-id "$ATLAS_TOKEN_SECRET_ID" --query SecretString --output text)"
       - export DATABASE_URL="$(aws secretsmanager get-secret-value --secret-id "$DATABASE_SECRET_ID" --query SecretString --output text | python3 -c 'import json, sys, urllib.parse; s=json.load(sys.stdin); print("postgres://{}:{}@{}:{}/{}?sslmode=require&search_path=public".format(urllib.parse.quote(s["username"], safe=""), urllib.parse.quote(s["password"], safe=""), s["host"], s["port"], s["dbname"]))')"
       - export ATLAS_DIRECTORY="atlas://${ATLAS_REGISTRY}:${MIGRATION_TAG}"
+      - |
+        cat > /tmp/atlas.hcl <<'EOF'
+        env "deploy" {
+          url = getenv("DATABASE_URL")
+          migration {
+            dir = getenv("ATLAS_DIRECTORY")
+          }
+        }
+        EOF
   build:
     commands:
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate apply --dry-run --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate apply --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
-      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL "$ATLAS_IMAGE_REFERENCE" migrate status --dir "$ATLAS_DIRECTORY" --url "$DATABASE_URL"
+      - set +x
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL -e ATLAS_DIRECTORY -v /tmp/atlas.hcl:/workspace/atlas.hcl:ro "$ATLAS_IMAGE_REFERENCE" migrate status --config file:///workspace/atlas.hcl --env deploy
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL -e ATLAS_DIRECTORY -v /tmp/atlas.hcl:/workspace/atlas.hcl:ro "$ATLAS_IMAGE_REFERENCE" migrate apply --dry-run --config file:///workspace/atlas.hcl --env deploy
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL -e ATLAS_DIRECTORY -v /tmp/atlas.hcl:/workspace/atlas.hcl:ro "$ATLAS_IMAGE_REFERENCE" migrate apply --config file:///workspace/atlas.hcl --env deploy
+      - docker run --rm -e ATLAS_TOKEN -e DATABASE_URL -e ATLAS_DIRECTORY -v /tmp/atlas.hcl:/workspace/atlas.hcl:ro "$ATLAS_IMAGE_REFERENCE" migrate status --config file:///workspace/atlas.hcl --env deploy

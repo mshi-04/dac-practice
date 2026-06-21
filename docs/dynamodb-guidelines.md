@@ -46,6 +46,12 @@ table 定義では、運用に必要な次の項目を明示的に扱う。
 - resource policy
 - tags
 
+lookup cache の TTL は無効のままにしない。保持期間を決め、item に TTL attribute を書き込む処理と、
+TTL による cache miss 時に Aurora から再生成する処理を同時に review する。
+
+Streams、DynamoDB VPC endpoint、resource policy は access pattern と network 境界が必要になった時だけ追加する。
+不要な場合も Terraform または設計文書で無効・未採用の理由を明示する。
+
 ## review anti-patterns
 
 - access pattern がないまま table を作る。
