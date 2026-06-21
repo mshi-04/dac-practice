@@ -80,8 +80,8 @@ source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup
 - 主な access pattern:
   - `ORDER#<order_number>` から Aurora の `orders.id` を取得する。
   - `PAYMENT#<provider>#<provider_payment_id>` から Aurora の `payments.id` を取得する。
-- TTL: 無効。lookup cache の保持期間は仕様未確定のため。
-- 注意: source of truth は Aurora とし、DynamoDB item は lookup cache として扱う。
+- TTL: 有効。`expires_at_epoch` に cache 作成から 30 日後の Unix epoch 秒を設定する。
+- 注意: source of truth は Aurora とし、TTL による cache miss 時は Aurora から再生成する。
 
 ## Review 時の注意
 

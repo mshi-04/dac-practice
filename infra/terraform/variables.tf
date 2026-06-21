@@ -56,6 +56,17 @@ variable "deletion_protection" {
   default     = true
 }
 
+variable "codebuild_log_retention_in_days" {
+  description = "Retention period for Atlas deployment CodeBuild logs."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.codebuild_log_retention_in_days)
+    error_message = "codebuild_log_retention_in_days must be a supported CloudWatch Logs retention value."
+  }
+}
+
 variable "dynamodb_billing_mode" {
   description = "Billing mode for DynamoDB tables."
   type        = string

@@ -24,6 +24,7 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
+          terraform_version: 1.15.6
           terraform_wrapper: false
 
       - name: Check Terraform formatting
@@ -58,6 +59,7 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
+          terraform_version: 1.15.6
           terraform_wrapper: false
 
       - name: Obtain AWS plan credentials through GitHub OIDC

@@ -92,10 +92,11 @@ Registry read token は AWS Secrets Manager に保存し、GitHub Actions には
 CodeBuild、GitHub OIDC role を管理する。CodeBuild だけが Aurora の PostgreSQL port に接続できる。
 private subnet の CodeBuild は Atlas Registry と container image を取得するため NAT gateway を経由する。
 
-Terraform state backend は `infra/terraform/bootstrap/` で作成した暗号化 S3 bucket を使う。
-bootstrap stack は versioning、server-side encryption、public access block を有効にし、
-非 TLS access を拒否する。state bucket 自体を作るため local state を使い backend block を持たない。
-`backend.hcl` は Git に含めず、`backend.hcl.example` をコピーして bootstrap で得た bucket 名を設定する。
+Terraform state backend は `infra/terraform/bootstrap/` で作成した暗号化 S3 bucket と DynamoDB lock table を使う。
+bootstrap stack は versioning、customer managed KMS key による server-side encryption、public access block を有効にし、
+非 TLS access を拒否する。DynamoDB table は `LockID` を partition key として state 操作を直列化する。
+state bucket 自体を作るため local state を使い backend block を持たない。`backend.hcl` は Git に含めず、
+`backend.hcl.example` をコピーして bootstrap で得た bucket 名と lock table 名を設定する。
 検証環境を作る前に、Atlas Registry read token を Terraform が作成する Secrets Manager secret に登録する。
 
 ### Terraform plan の CI 検証
@@ -121,8 +122,8 @@ branch に対応する open PR がある場合は、plan の結果を PR コメ�
 検証環境の初回構築から手動 deploy までは次の順で実行する。詳細手順とコマンドは README の
 「初回運用 runbook」を参照する。
 
-1. State bootstrap: `infra/terraform/bootstrap/` を apply し、state 用 S3 bucket を作成する。
-2. Terraform plan / apply: bucket 名を `backend.hcl` に設定して main stack を init し、
+1. State bootstrap: `infra/terraform/bootstrap/` を apply し、state 用 S3 bucket と lock table を作成する。
+2. Terraform plan / apply: bucket 名と lock table 名を `backend.hcl` に設定して main stack を init し、
    plan を確認してから apply する。
 3. Atlas Registry read token の Secrets Manager 登録: Terraform が作成した secret に token を投入する。
    token 値は Git・workflow・Terraform code に残さない。

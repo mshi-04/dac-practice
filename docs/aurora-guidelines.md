@@ -26,6 +26,8 @@ Aurora schema では扱わない。
 - 既に共有環境へ適用した migration は原則として書き換えない。
 - rename は drop/add として扱われていないか確認する。
 - `NOT NULL`、unique constraint、foreign key の追加は既存 data を考慮する。
+- 新規 table の invariant は `CREATE TABLE` に constraint として含める。既存 table への constraint 追加は、必要に応じて `NOT VALID`、backfill、`VALIDATE CONSTRAINT` を段階的に行う。
+- 既存 table に volatile な default を持つ column を追加するときは、nullable column の追加、batch backfill、default の設定、`NOT NULL` の順に分け、長時間 lock と table rewrite を避ける。
 - long-running DDL と lock の影響を確認する。
 - `schema.sql` の変更から `atlas migrate diff` で migration を生成し、生成 SQL を review する。
 - PR では Atlas lint と migration test を通し、`develop` で公開された Registry SHA tag だけを適用する。

@@ -7,6 +7,10 @@ description: Review Database as Code changes. Use when reviewing Aurora migratio
 
 Aurora migration、DynamoDB 変更、Terraform resource 定義の review をするときに使う。
 
+review・検証・運用しやすい Database as Code を優先する。Aurora の schema migration と
+DynamoDB の table / access pattern 設計を分け、AWS resource 定義、schema 定義、migration、
+運用 policy を code review できる形で扱う。
+
 ## 参照
 
 判断基準の詳細は docs を読む（この skill には複製しない）。

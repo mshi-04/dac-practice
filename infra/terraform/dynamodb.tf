@@ -5,6 +5,7 @@ resource "aws_dynamodb_table" "shopping_cart" {
   range_key                   = "item_id"
   table_class                 = var.dynamodb_table_class
   deletion_protection_enabled = var.dynamodb_deletion_protection_enabled
+  stream_enabled              = false
 
   attribute {
     name = "cart_owner_id"
@@ -26,7 +27,8 @@ resource "aws_dynamodb_table" "shopping_cart" {
   }
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   tags = {
@@ -41,6 +43,7 @@ resource "aws_dynamodb_table" "customer_activity" {
   range_key                   = "occurred_at_event_id"
   table_class                 = var.dynamodb_table_class
   deletion_protection_enabled = var.dynamodb_deletion_protection_enabled
+  stream_enabled              = false
 
   attribute {
     name = "customer_or_session_id"
@@ -62,7 +65,8 @@ resource "aws_dynamodb_table" "customer_activity" {
   }
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   tags = {
@@ -76,10 +80,16 @@ resource "aws_dynamodb_table" "order_lookup" {
   hash_key                    = "lookup_key"
   table_class                 = var.dynamodb_table_class
   deletion_protection_enabled = var.dynamodb_deletion_protection_enabled
+  stream_enabled              = false
 
   attribute {
     name = "lookup_key"
     type = "S"
+  }
+
+  ttl {
+    attribute_name = var.dynamodb_ttl_attribute_name
+    enabled        = true
   }
 
   point_in_time_recovery {
@@ -87,7 +97,8 @@ resource "aws_dynamodb_table" "order_lookup" {
   }
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   tags = {

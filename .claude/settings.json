@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Write(migrations/*.sql)",
+            "if": "Write(**/migrations/*.sql)",
             "shell": "powershell",
             "command": "& \"${CLAUDE_PROJECT_DIR}/.claude/hooks/validate-migration.ps1\""
           }
