@@ -68,6 +68,53 @@ atlas migrate test --env local "$env:TEMP/migrate.test.hcl"
 atlas migrate validate --env local
 ```
 
+## Local Seed Data
+
+`seeds/ecommerce_local_seed.sql` は、ローカル PostgreSQL で商品検索、在庫確認、
+checkout を試すためのデータです。`customers`、`product_categories`、`products`、
+`inventory_items` に、active / draft / archived の商品と引当済み在庫を含むサンプルを投入します。
+Atlas migration ではなくローカル検証専用の SQL のため、shared environment には適用しません。
+
+各テーブルの自然キー（email / slug / SKU / product_id）で UPSERT するため、seed は繰り返し
+実行できます。再実行時は、対象レコードの値と在庫数が seed 定義の値に戻ります。
+
+```powershell
+# schema を適用済みにする
+docker compose up -d db
+$env:DATABASE_URL = "postgres://app:app_password@localhost:5432/appdb?search_path=public&sslmode=disable"
+atlas migrate apply --env local
+
+# psql が host にある場合
+$pg = "postgres://app:app_password@localhost:5432/appdb?sslmode=disable"
+psql $pg -v ON_ERROR_STOP=1 -f seeds/ecommerce_local_seed.sql
+```
+
+checkout と全ての代表 query を試す場合は、関数を登録してから検証用クエリを実行します。
+`seeds/verify_representative_queries.sql` は checkout、配送 event、在庫更新を transaction 内で
+生成して、最後に `ROLLBACK` します。永続化されるのは seed データだけです。
+
+```powershell
+$pg = "postgres://app:app_password@localhost:5432/appdb?sslmode=disable"
+Get-ChildItem sql/functions/*.sql | Sort-Object Name | ForEach-Object {
+  psql $pg -v ON_ERROR_STOP=1 -f $_.FullName
+}
+psql $pg -v ON_ERROR_STOP=1 -f seeds/verify_representative_queries.sql
+```
+
+host に `psql` がない場合は、repo をコンテナへコピーして実行します。
+
+```powershell
+docker compose cp seeds db:/tmp/seeds
+docker compose cp sql/functions db:/tmp/functions
+docker compose exec -T db sh -c 'for file in /tmp/functions/*.sql; do psql -v ON_ERROR_STOP=1 -U app -d appdb -f "$file"; done'
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U app -d appdb -f /tmp/seeds/ecommerce_local_seed.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U app -d appdb -f /tmp/seeds/verify_representative_queries.sql
+```
+
+検証クエリは [docs/ecommerce-data-model.md の Aurora の代表 query](docs/ecommerce-data-model.md#aurora-の代表-query)
+を対象にしています。checkout の成功・在庫不足・取消・出荷の連続デモは
+[sql/README.md](sql/README.md) の `sql/examples/` を使用してください。
+
 ## CI
 
 GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行します。
@@ -202,6 +249,7 @@ Aurora へ直接接続しません。
 ├── docker-compose.yml
 ├── docs/
 ├── migrations/
+├── seeds/
 ├── schema.sql
 └── sql/
 ```
