@@ -57,7 +57,8 @@ source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup
   - `cart_owner_id` でカート内 item を一覧する。
   - `cart_owner_id` + `item_id` で数量を更新する。
 - TTL: 有効。`expires_at_epoch` を Unix epoch 秒で設定し、一定期間更新のない匿名カートを削除する。
-- 整合性: checkout 直前に Aurora の商品価格と在庫を再確認する。
+- 整合性: checkout 直前に Aurora の商品価格と在庫を再確認する。checkout 成功後は snapshot の
+  `cart_revision` を条件に item を削除し、更新済み item を誤って削除しない。
 
 ### CustomerActivity table
 
@@ -68,8 +69,10 @@ source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup
   Terraform で扱いやすい物理属性名にしたもの。
 - 主な access pattern:
   - 顧客または session ごとの直近 activity を取得する。
-- TTL: 有効。`expires_at_epoch` を Unix epoch 秒で設定し、保持期間を制御する。
-- 注意: 分析用途の大規模集計は DynamoDB table scan ではなく、後続で stream/export 先を設計する。
+- TTL: 有効。`expires_at_epoch` を event 発生時刻から 30 日後の Unix epoch 秒で設定する。TTL の
+  物理削除を待たず、読み取り時にも期限切れ item を除外する。
+- 注意: 分析用途の大規模集計は DynamoDB table scan ではなく、TTL 前の stream/export による
+  別保存先を設計する。
 
 ### OrderLookup table
 
@@ -81,11 +84,14 @@ source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup
   - `ORDER#<order_number>` から Aurora の `orders.id` を取得する。
   - `PAYMENT#<provider>#<provider_payment_id>` から Aurora の `payments.id` を取得する。
 - TTL: 有効。`expires_at_epoch` に cache 作成から 30 日後の Unix epoch 秒を設定する。
-- 注意: source of truth は Aurora とし、TTL による cache miss 時は Aurora から再生成する。
+- 注意: source of truth は Aurora とし、TTL による cache miss と target の不整合時は Aurora から
+  再生成する。item 契約と回復手順は
+  [EC DynamoDB 整合性回復フロー](ecommerce-consistency-recovery.md) を参照する。
 
 ## Review 時の注意
 
 - 注文確定、在庫引当、決済状態更新は Aurora transaction 境界として review する。
 - カートと閲覧履歴は DynamoDB の TTL、hot partition、item size を review する。
 - DynamoDB item に商品説明や画像など大きな blob を持たせない。
-- DynamoDB の lookup cache と Aurora の source of truth がずれた場合の再生成手順を後続で定義する。
+- lookup cache、checkout 後のカート削除、activity の TTL 失効は
+  [EC DynamoDB 整合性回復フロー](ecommerce-consistency-recovery.md) に従う。

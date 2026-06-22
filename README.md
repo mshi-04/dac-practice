@@ -38,6 +38,7 @@ local validation では PostgreSQL 16 と Atlas migration を使います。
 - [docs/dynamodb-guidelines.md](docs/dynamodb-guidelines.md)
 - [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md)
 - [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md)
+- [docs/ecommerce-consistency-recovery.md](docs/ecommerce-consistency-recovery.md)
 - [docs/change-review-guidelines.md](docs/change-review-guidelines.md)
 
 ## Aurora Local Validation
