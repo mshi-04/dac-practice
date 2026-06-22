@@ -1,0 +1,73 @@
+name: Publish production Atlas Registry
+
+# Production migration publication starts only after CI succeeds for a main push.
+# It publishes the exact commit SHA that CI validated; it never applies to Aurora.
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-atlas-registry-dacpractice
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout CI-tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Detect migration changes
+        id: paths
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if git diff --quiet "$TARGET_SHA^" "$TARGET_SHA" -- atlas.hcl migrations; then
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Atlas Cloud token
+        if: steps.paths.outputs.publish == 'true'
+        env:
+          ATLAS_TOKEN: ${{ secrets.ATLAS_TOKEN }}
+        run: |
+          if [ -z "$ATLAS_TOKEN" ]; then
+            echo 'ATLAS_TOKEN GitHub Actions Secret must contain an Atlas Cloud Bot token.' >&2
+            exit 1
+          fi
+
+      - name: Set up Atlas
+        if: steps.paths.outputs.publish == 'true'
+        uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
+
+      - name: Validate migration directory
+        if: steps.paths.outputs.publish == 'true'
+        run: atlas migrate validate --dir file://migrations
+
+      - name: Publish CI-tested migration directory
+        if: steps.paths.outputs.publish == 'true'
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: >-
+          atlas migrate push dacpractice:${{ env.TARGET_SHA }}
+          --dev-url "docker://postgres/16/dev?search_path=public"

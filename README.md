@@ -127,11 +127,33 @@ GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行しま�
 - `Terraform Plan`: `infra/terraform/` の内部 branch push で Terraform の format / validate を実行し、
   OIDC plan role 設定後は `terraform plan` も実行する。設定は
   [docs/dac-workflow.md#terraform-plan-の-ci-検証](docs/dac-workflow.md#terraform-plan-の-ci-検証) を参照する。
+- `Deploy production Terraform` / `Publish production Atlas Registry` / `Deploy production Aurora`:
+  `main` へのpushで `CI` が成功した場合だけ起動する本番CD。`develop`、PR、CI失敗、fork由来の
+  workflowからは本番のOIDC credentialを取得しない。
 
 Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
 登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
 [docs/dac-workflow.md#atlas-registry-公開](docs/dac-workflow.md#atlas-registry-公開) と
 [docs/change-review-guidelines.md#ci-の扱い](docs/change-review-guidelines.md#ci-の扱い) を参照してください。
+
+## Production CD
+
+`infra/terraform/production/` はverificationとは別のTerraform state、VPC、Aurora、DynamoDB、
+CodeBuild、IAM rolesを管理します。同一AWSアカウントのGitHub OIDC providerは既存のものを参照し、
+production stackで再作成しません。
+
+- **DynamoDB / Terraform**: CI成功後にread-only roleでproduction stateからplanを作成し、
+  GitHub Environment `production` のrequired reviewersがplanを確認して承認した後、別のapply roleで
+  保存済みbinary planを適用します。stateが変わってplanが古くなった場合、Terraform applyは失敗します。
+- **Aurora / Atlas**: CI成功後に対象commitをimmutable Registry SHA tagとして公開します。lintと
+  checksum validationが成功してから `production` の承認を待ち、private subnetのCodeBuildが
+  Secrets Managerから接続情報を取得してapplyします。GitHub-hosted runnerはAuroraへ接続しません。
+- **原子性**: CodeBuildは `atlas migrate apply --tx-mode all` を使用します。pending migration全体を
+  一つのtransactionで実行するため、non-transactional DDLを含むリリースは失敗します。失敗時は
+  自動rollbackではなく、新しいforward migrationで修正します。
+
+初回bootstrap、GitHub Environment variables、OIDC roleの最小権限は
+[docs/dac-workflow.md#production-cd](docs/dac-workflow.md#production-cd) を参照してください。
 
 ## Verification Aurora Deployment
 

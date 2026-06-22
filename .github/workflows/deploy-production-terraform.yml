@@ -1,0 +1,221 @@
+name: Deploy production Terraform
+
+# Production Terraform CD starts only after the CI workflow succeeds for a main push.
+# The plan job is read-only; the production Environment approval gates the apply job.
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-terraform-deploy
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: Check production Terraform changes
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      production_terraform: ${{ steps.paths.outputs.production_terraform }}
+      target_sha: ${{ steps.target.outputs.sha }}
+
+    steps:
+      - name: Resolve CI-tested commit
+        id: target
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          printf 'sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout CI-tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Detect production Terraform changes
+        id: paths
+        env:
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          if git diff --quiet "$TARGET_SHA^" "$TARGET_SHA" -- infra/terraform/production; then
+            echo 'production_terraform=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'production_terraform=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  static:
+    name: Validate production Terraform
+    needs: changes
+    if: needs.changes.outputs.production_terraform == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout CI-tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.changes.outputs.target_sha }}
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+
+      - name: Check Terraform formatting and configuration
+        run: |
+          terraform -chdir=infra/terraform/production fmt -check -recursive
+          terraform -chdir=infra/terraform/production init -backend=false -reconfigure
+          terraform -chdir=infra/terraform/production validate
+
+  plan:
+    name: Plan production Terraform
+    needs: [changes, static]
+    if: needs.changes.outputs.production_terraform == 'true'
+    runs-on: ubuntu-latest
+    environment: production-plan
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout CI-tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.changes.outputs.target_sha }}
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+
+      - name: Obtain AWS plan credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PRODUCTION_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-production-terraform-plan-${{ github.run_id }}
+          role-duration-seconds: 900
+
+      - name: Initialize production Terraform state
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+        run: |
+          test -n "$TF_STATE_BUCKET"
+          test -n "$TF_STATE_KEY"
+          test -n "$TF_STATE_LOCK_TABLE"
+          terraform -chdir=infra/terraform/production init -input=false -reconfigure \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="encrypt=true"
+
+      - name: Create production Terraform plan
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+          TF_VPC_CIDR: ${{ vars.TF_VPC_CIDR }}
+        run: |
+          test -n "$TF_VPC_CIDR"
+          terraform -chdir=infra/terraform/production plan \
+            -input=false \
+            -lock=false \
+            -out="$RUNNER_TEMP/production.tfplan" \
+            -var "aws_region=$AWS_REGION" \
+            -var "vpc_cidr=$TF_VPC_CIDR" \
+            -var "terraform_state_bucket_name=$TF_STATE_BUCKET" \
+            -var "terraform_state_key=$TF_STATE_KEY" \
+            -var "terraform_state_lock_table_name=$TF_STATE_LOCK_TABLE"
+          terraform -chdir=infra/terraform/production show -no-color "$RUNNER_TEMP/production.tfplan" > "$RUNNER_TEMP/production-plan.txt"
+          {
+            echo '## Production Terraform plan'
+            echo
+            echo 'The approved apply job consumes the binary plan from this CI-tested commit.'
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/production-plan.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload approved Terraform plan
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: production-terraform-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}/production.tfplan
+          if-no-files-found: error
+          retention-days: 1
+
+  apply:
+    name: Apply production Terraform
+    needs: [changes, plan]
+    if: needs.changes.outputs.production_terraform == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout CI-tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.changes.outputs.target_sha }}
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+
+      - name: Download approved Terraform plan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: production-terraform-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}
+
+      - name: Obtain AWS apply credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-production-terraform-apply-${{ github.run_id }}
+          role-duration-seconds: 900
+
+      - name: Initialize production Terraform state
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+        run: |
+          test -n "$TF_STATE_BUCKET"
+          test -n "$TF_STATE_KEY"
+          test -n "$TF_STATE_LOCK_TABLE"
+          terraform -chdir=infra/terraform/production init -input=false -reconfigure \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="encrypt=true"
+
+      - name: Apply the approved Terraform plan
+        run: terraform -chdir=infra/terraform/production apply -input=false "$RUNNER_TEMP/production.tfplan"

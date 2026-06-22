@@ -23,6 +23,7 @@ infra/terraform/**/*.tfstate.*
 infra/terraform/**/*.tfvars
 infra/terraform/**/*.tfvars.json
 infra/terraform/backend.hcl
+infra/terraform/production/backend.hcl
 
 # Bootstrap stack keeps its state local; never commit state or local inputs.
 infra/terraform/bootstrap/.terraform/

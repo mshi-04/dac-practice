@@ -146,6 +146,70 @@ Aurora Serverless v2、NAT gateway、backup retention、KMS key は稼働中・�
 - Atlas の checksum は migration file のバイト列を比較するため、Windows の CRLF 変換を
   許可しない。
 
+## Production CD
+
+productionはverificationと同一AWSアカウント内に置くが、Terraform state、resource prefix、
+VPC CIDR、Aurora/DynamoDB resources、CodeBuild、IAM roles、Secrets Manager secretsは分離する。
+`infra/terraform/production/` は既存のGitHub OIDC providerをdata sourceで参照するため、
+同一アカウント内にOIDC providerを重複作成しない。
+
+### 開始条件と承認
+
+- `Deploy production Terraform` と `Publish production Atlas Registry` は、同一repositoryの`main` pushに対する
+  `CI` workflowの成功した`workflow_run`だけを受け付ける。PR、fork、`develop`、CI失敗からは起動しない。
+- Terraform workflowは対象commitで`infra/terraform/production/`が変わった場合だけplanを作成する。
+  plan jobはGitHub Environment `production-plan` を使用し、read-only OIDC roleでremote stateを読取る。
+- Terraform applyとAurora applyはGitHub Environment `production` を使用する。`production`にはrequired reviewersを
+  設定し、`production-plan`には設定しない。applyは承認済みのCI-tested commitだけを対象にする。
+- `Publish production Atlas Registry` はCI-tested commit SHAをimmutable tagとして公開する。
+  `Deploy production Aurora` はその公開workflowの成功後にのみ起動し、lint/validateを承認前に再実行する。
+
+### Terraform production apply
+
+Terraform applyは`infra/terraform/production/`のroot全体に対して行う。DynamoDBだけを対象にした
+`-target` applyはstate整合性を壊すため使用しない。plan jobは短期保持のbinary planと、承認者向けの
+text summaryを出力する。apply jobは同じcommit、同じbackend、同じbinary planを使用する。
+stateが変更されてplanが古くなった場合はapplyを失敗させ、新しいCI成功commitから計画を作り直す。
+
+production stateのbackendはS3 object `dac-practice/production/terraform.tfstate` と専用DynamoDB lock tableを
+使う。`infra/terraform/bootstrap/`を別のproduction用bucket名と`project_name=dac-practice-production`で
+管理者が一度だけapplyし、bucket名・lock table名をGitHub Environment variableに登録する。production stackは
+CD roleを使う前に管理者権限で一度applyし、OIDC rolesとCodeBuildを作成する。以後の変更はCD roleだけで行う。
+
+### IAM / OIDC要件
+
+GitHub OIDC trust policyはすべて`token.actions.githubusercontent.com:aud`を`sts.amazonaws.com`に固定する。
+subjectはEnvironment単位で固定し、branch wildcardやrepository全体の信頼は許可しない。
+
+- production plan role: `repo:mshi-04/DacPractice:environment:production-plan` のみを信頼する。
+  production Terraform resourcesのdescribe/list、state objectの`GetObject`、state bucketのprefix限定`ListBucket`だけを許可する。
+- production Terraform apply role: `repo:mshi-04/DacPractice:environment:production` のみを信頼する。
+  production prefixのTerraform管理対象と、production state objectのread/write、専用lock tableのlock操作だけを許可する。
+  `secretsmanager:GetSecretValue`は許可しない。
+- production Aurora deploy role: 同じ`production` subjectだけを信頼し、production CodeBuild projectの
+  `codebuild:StartBuild`と`codebuild:BatchGetBuilds`だけを許可する。
+- CodeBuild role: production AuroraのRDS管理secretとAtlas Registry read token secretに限り
+  `secretsmanager:GetSecretValue`を許可する。GitHub Actionsのrole、workflow variable、artifact、logへ
+  database credentialやRegistry read tokenを渡さない。
+
+GitHub Environment `production-plan`には`AWS_REGION`、`TF_STATE_BUCKET`、`TF_STATE_KEY`、
+`TF_STATE_LOCK_TABLE`、`TF_VPC_CIDR`、`AWS_TERRAFORM_PRODUCTION_PLAN_ROLE_ARN`を設定する。
+`production`には同じbackend/VPC variablesに加え、`AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN`、
+`AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN`、`PRODUCTION_CODEBUILD_PROJECT_NAME`を設定する。
+role ARNとproject nameはproduction Terraform outputsから登録する。Atlasのpublish/lintには既存の
+GitHub Actions Secret `ATLAS_TOKEN`（Atlas Cloud organization Bot token）を使い、CodeBuildが読む
+Registry read tokenはAWS Secrets Managerだけに保存する。
+
+### Aurora production apply
+
+Aurora workflowはapproval前に`atlas migrate validate`と`atlas migrate lint`を再実行する。lintが
+destructive changeや互換性問題を検出した場合、`production` Environment jobは開始しない。承認後、
+GitHub ActionsはAuroraへ直接接続せず、immutable Registry SHAをCodeBuildへ渡す。CodeBuildは`set +x`のまま
+Secrets Managerから値を取得し、validate、status、dry-run、`atlas migrate apply --tx-mode all`、statusの順に実行する。
+
+`--tx-mode all`によりpending migration全体を単一transactionとして扱う。non-transactional DDLを含むmigrationは
+適用を失敗させる。失敗時に自動rollbackや既存migrationの書換えは行わず、確認後に新しいforward migrationを作成する。
+
 ## 採用 tool の考え方
 
 - Aurora の SQL schema migration には Atlas を使う。

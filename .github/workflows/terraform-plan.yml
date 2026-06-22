@@ -38,6 +38,8 @@ jobs:
           terraform -chdir=infra/terraform validate
           terraform -chdir=infra/terraform/plan init -backend=false
           terraform -chdir=infra/terraform/plan validate
+          terraform -chdir=infra/terraform/production init -backend=false
+          terraform -chdir=infra/terraform/production validate
 
   plan:
     name: Plan Terraform changes

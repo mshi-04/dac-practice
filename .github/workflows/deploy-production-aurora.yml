@@ -1,0 +1,141 @@
+name: Deploy production Aurora
+
+# Production Aurora CD starts only after a CI-tested main commit is published to Atlas Registry.
+# Lint and validation run before the production Environment approval; CodeBuild performs the private-network apply.
+on:
+  workflow_run:
+    workflows:
+      - Publish production Atlas Registry
+    types:
+      - completed
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-aurora-deploy
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: Check production migration changes
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      migrations: ${{ steps.paths.outputs.migrations }}
+
+    steps:
+      - name: Checkout published commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Detect migration changes
+        id: paths
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if git diff --quiet "$TARGET_SHA^" "$TARGET_SHA" -- atlas.hcl migrations; then
+            echo 'migrations=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'migrations=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  preflight:
+    name: Validate production migration
+    needs: changes
+    if: >-
+      needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      migration_tag: ${{ steps.tag.outputs.migration_tag }}
+
+    steps:
+      - name: Resolve immutable migration tag
+        id: tag
+        env:
+          MIGRATION_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if ! printf '%s' "$MIGRATION_TAG" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo 'Migration tag must be a 40-character lowercase commit SHA.' >&2
+            exit 1
+          fi
+          echo "migration_tag=$MIGRATION_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout CI-tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ steps.tag.outputs.migration_tag }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Atlas
+        uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
+
+      - name: Build pinned Atlas Action binary
+        uses: ariga/atlas-action/setup@e7cdee90ecc06996f1c055bc01a62f03666cecb4 # v1
+
+      - name: Validate migration directory
+        run: atlas migrate validate --dir file://migrations
+
+      - name: Lint the migration before approval
+        run: >-
+          atlas migrate lint
+          --dir file://migrations
+          --dev-url "docker://postgres/16/dev?search_path=public"
+          --latest 1
+
+  deploy:
+    name: Apply production migration
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+
+    steps:
+      - name: Obtain AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-production-aurora-${{ github.run_id }}
+          role-duration-seconds: 900
+
+      - name: Start VPC deployment build
+        id: build
+        env:
+          CODEBUILD_PROJECT_NAME: ${{ vars.PRODUCTION_CODEBUILD_PROJECT_NAME }}
+          MIGRATION_TAG: ${{ needs.preflight.outputs.migration_tag }}
+        run: |
+          test -n "$CODEBUILD_PROJECT_NAME"
+          build_id="$(aws codebuild start-build \
+            --project-name "$CODEBUILD_PROJECT_NAME" \
+            --environment-variables-override \
+              "name=MIGRATION_TAG,value=$MIGRATION_TAG,type=PLAINTEXT" \
+            --query 'build.id' \
+            --output text)"
+          echo "id=$build_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for deployment result
+        env:
+          BUILD_ID: ${{ steps.build.outputs.id }}
+        run: |
+          for ((attempt = 1; attempt <= 240; attempt++)); do
+            status="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"
+            echo "CodeBuild status: $status"
+            case "$status" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo 'Timed out waiting for CodeBuild.' >&2
+          exit 1
