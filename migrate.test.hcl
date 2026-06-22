@@ -184,6 +184,7 @@ test "migrate" "checkout_cancel_and_shipment_apply_inventory_transitions" {
       VALUES (1003, 4001, 'release', 3, 'test cancellation');
 
       -- 出荷: available_quantity と reserved_quantity を同量だけ減らす。
+      -- orders / shipments の状態遷移は既存設計で別処理に委ねるため、この在庫遷移テストでは扱わない。
       UPDATE inventory_items AS item
          SET available_quantity = item.available_quantity - reservation.quantity,
              reserved_quantity = item.reserved_quantity - reservation.quantity
