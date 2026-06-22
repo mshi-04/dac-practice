@@ -19,7 +19,7 @@ SET name = EXCLUDED.name,
     status = EXCLUDED.status,
     updated_at = CURRENT_TIMESTAMP;
 
--- カテゴリ。子カテゴリの親子関係は、全 slug を確定してから設定する。
+-- カテゴリ。seed 管理対象の親子関係は、全 slug を確定してから設定する。
 INSERT INTO product_categories (name, slug, display_order)
 VALUES
     ('文具', 'stationery', 10),
@@ -31,6 +31,13 @@ ON CONFLICT (slug) DO UPDATE
 SET name = EXCLUDED.name,
     display_order = EXCLUDED.display_order,
     updated_at = CURRENT_TIMESTAMP;
+
+-- seed 管理対象は既存の親子関係を一度消し、下記の定義だけに収束させる。
+-- 対象外のカテゴリを更新しないことで、ローカル DB の追加データを壊さない。
+UPDATE product_categories
+   SET parent_category_id = NULL,
+       updated_at = CURRENT_TIMESTAMP
+ WHERE slug IN ('stationery', 'beverages', 'books', 'notebooks', 'desk-accessories');
 
 UPDATE product_categories AS child
    SET parent_category_id = parent.id,
