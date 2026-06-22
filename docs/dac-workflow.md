@@ -150,8 +150,9 @@ Aurora Serverless v2、NAT gateway、backup retention、KMS key は稼働中・�
 
 productionはverificationと同一AWSアカウント内に置くが、Terraform state、resource prefix、
 VPC CIDR、Aurora/DynamoDB resources、CodeBuild、IAM roles、Secrets Manager secretsは分離する。
-`infra/terraform/production/` は既存のGitHub OIDC providerをdata sourceで参照するため、
-同一アカウント内にOIDC providerを重複作成しない。
+共有するGitHub OIDC providerは`infra/terraform/production/`がTerraform stateで管理する。
+`infra/terraform/`のverification stackは同providerをdata sourceで参照するため、同一アカウント内に
+OIDC providerを重複作成しない。production stackを先にbootstrapする。
 
 ### 開始条件と承認
 
