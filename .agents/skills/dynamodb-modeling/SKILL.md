@@ -13,6 +13,7 @@ DynamoDB の table 設計・access pattern・key design・capacity を扱うと�
 
 - DynamoDB 設計方針: [dynamodb-guidelines](../../../docs/dynamodb-guidelines.md)
 - Aurora との責務分離: [dac-workflow](../../../docs/dac-workflow.md)
+- EC の cache 再生成と TTL 回復: [ecommerce-consistency-recovery](../../../docs/ecommerce-consistency-recovery.md)
 
 ## 手順
 

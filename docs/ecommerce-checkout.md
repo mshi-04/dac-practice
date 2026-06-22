@@ -19,7 +19,8 @@ EC サイトの checkout は、カート、注文、在庫、決済、配送の�
 4. `orders`、`order_items`、`order_addresses` を作成する。
 5. `inventory_items.reserved_quantity` を増やし、`inventory_reservations` と `inventory_movements` を作成する。
 6. 決済 provider の authorization 結果を `payments` と `payment_events` に記録する。
-7. 成功時は transaction を commit し、DynamoDB のカートを削除または checkout 済みに更新する。
+7. 同じ transaction に OrderLookup とカート後処理の durable outbox record を作成して commit する。
+   commit 後に worker が OrderLookup を生成し、checkout snapshot と一致するカート item を削除する。
 
 在庫確認と引当は同じ Aurora transaction 内で直列化する。`inventory_items` を
 `SELECT ... FOR UPDATE` で lock するか、`available_quantity - reserved_quantity >= :quantity` を
@@ -60,7 +61,10 @@ EC サイトの checkout は、カート、注文、在庫、決済、配送の�
 
 ## DynamoDB 同期
 
-- checkout 成功後、DynamoDB のカート item は削除するか `checked_out` 状態にする。
-- `OrderLookup` は Aurora commit 後に非同期で作成してよい。
-- lookup cache の作成に失敗しても、Aurora の注文を rollback しない。
-- lookup cache は Aurora から再生成できるようにする。
+- `OrderLookup` とカート後処理は Aurora commit 後に実行する。DynamoDB を Aurora transaction に
+  含めない。
+- 同じ Aurora transaction に durable outbox record を保存し、worker の再試行、オンデマンド回復、
+  定期照合で DynamoDB を収束させる。
+- lookup cache またはカート後処理の失敗で、commit 済みの Aurora 注文を rollback・取消ししない。
+- OrderLookup の再生成、snapshot を条件にしたカート削除、CustomerActivity の保持・失効の詳細は
+  [EC DynamoDB 整合性回復フロー](ecommerce-consistency-recovery.md) を参照する。
