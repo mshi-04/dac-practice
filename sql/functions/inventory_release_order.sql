@@ -33,14 +33,19 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'release_failed: order % does not exist', p_order_id;
     END IF;
-    IF v_order.status IN ('canceled', 'refunded') THEN
+    -- 既に終了状態の注文は取消対象にしない。fulfilled（出荷済み）も release で
+    -- 在庫を戻すのは不整合なため拒否する。
+    IF v_order.status IN ('canceled', 'refunded', 'fulfilled') THEN
         RAISE EXCEPTION 'release_failed: order % is already %', p_order_id, v_order.status
             USING ERRCODE = 'check_violation';
     END IF;
 
+    -- inventory_items の行 lock 順を product_id 昇順に固定し、checkout / consume と
+    -- 順序を揃えて deadlock を避ける。
     FOR v_res IN
         SELECT * FROM inventory_reservations
          WHERE order_id = p_order_id AND status = 'reserved'
+         ORDER BY product_id
          FOR UPDATE
     LOOP
         UPDATE inventory_items
@@ -59,6 +64,13 @@ BEGIN
 
         v_count := v_count + 1;
     END LOOP;
+
+    -- reserved な引当が無い注文（二重取消、未引当、出荷消費済みなど）は、
+    -- 在庫を戻さないまま canceled に遷移させないよう例外で止める。
+    IF v_count = 0 THEN
+        RAISE EXCEPTION 'release_failed: order % has no reserved inventory to release', p_order_id
+            USING ERRCODE = 'check_violation';
+    END IF;
 
     UPDATE orders
        SET status     = 'canceled',

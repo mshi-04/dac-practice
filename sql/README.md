@@ -91,4 +91,4 @@ docker compose exec -T db psql -U app -d appdb -f /tmp/sql/functions/checkout_pl
 1. checkout 成功（在庫の `reserved_quantity` が増える）
 2. 在庫不足の checkout が例外で rollback し、注文が作られない
 3. 注文取消で引当が戻り注文が `canceled` になる
-4. 出荷で `available_quantity` と `reserved_quantity` が同量減り、引当が `consumed` になる
+4. 出荷で `available_quantity` と `reserved_quantity` が同量減り、引当が `consumed` 状態になる

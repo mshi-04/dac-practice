@@ -74,8 +74,14 @@ BEGIN
                            'status','authorized')
     );
     RAISE NOTICE 'UNEXPECTED: checkout succeeded despite insufficient stock';
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'EXPECTED failure (rolled back): %', SQLERRM;
+EXCEPTION
+    -- 想定する在庫不足（check_violation かつ insufficient stock）だけを成功扱いにし、
+    -- 関数未登録・型不整合などの想定外エラーは再送出して握り潰さない。
+    WHEN SQLSTATE '23514' THEN
+        IF POSITION('insufficient stock' IN SQLERRM) = 0 THEN
+            RAISE;
+        END IF;
+        RAISE NOTICE 'EXPECTED failure (rolled back): %', SQLERRM;
 END;
 $$;
 

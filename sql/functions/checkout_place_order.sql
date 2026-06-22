@@ -83,7 +83,8 @@ BEGIN
 
     -- 2. 決済 authorization の成否を先に確認する。失敗時は注文を作らず rollback する。
     v_payment_status := p_payment ->> 'status';
-    IF (p_payment ->> 'provider') IS NULL OR (p_payment ->> 'provider_payment_id') IS NULL THEN
+    IF NULLIF(BTRIM(p_payment ->> 'provider'), '') IS NULL
+       OR NULLIF(BTRIM(p_payment ->> 'provider_payment_id'), '') IS NULL THEN
         RAISE EXCEPTION 'checkout_failed: payment.provider and payment.provider_payment_id are required';
     END IF;
     IF v_payment_status IS DISTINCT FROM 'authorized' THEN
@@ -191,7 +192,12 @@ BEGIN
     END LOOP;
 
     -- 5-6. 明細 snapshot 作成 + 在庫引当 + 引当/監査記録。
-    FOR v_item IN SELECT * FROM jsonb_array_elements(v_lines)
+    -- inventory_items の行 lock 順を product_id 昇順に固定し、並行 checkout 間の
+    -- deadlock を避ける（inventory_release_order / inventory_consume_order も同順）。
+    FOR v_item IN
+        SELECT e.value
+          FROM jsonb_array_elements(v_lines) AS e(value)
+         ORDER BY (e.value ->> 'product_id')::BIGINT
     LOOP
         v_product_id := (v_item ->> 'product_id')::BIGINT;
         v_quantity   := (v_item ->> 'quantity')::INTEGER;

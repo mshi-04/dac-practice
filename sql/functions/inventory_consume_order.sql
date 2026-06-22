@@ -34,9 +34,12 @@ BEGIN
         RAISE EXCEPTION 'consume_failed: order % does not exist', p_order_id;
     END IF;
 
+    -- inventory_items の行 lock 順を product_id 昇順に固定し、checkout / release と
+    -- 順序を揃えて deadlock を避ける。
     FOR v_res IN
         SELECT * FROM inventory_reservations
          WHERE order_id = p_order_id AND status = 'reserved'
+         ORDER BY product_id
          FOR UPDATE
     LOOP
         UPDATE inventory_items

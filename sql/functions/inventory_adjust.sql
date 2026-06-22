@@ -32,6 +32,10 @@ BEGIN
     IF p_movement_type NOT IN ('stock_in', 'adjust') THEN
         RAISE EXCEPTION 'adjust_failed: movement_type must be stock_in or adjust (got %)', p_movement_type;
     END IF;
+    -- stock_in（入庫）は在庫を増やす操作なので負値を許可しない。減算は adjust で扱う。
+    IF p_movement_type = 'stock_in' AND p_quantity_delta < 0 THEN
+        RAISE EXCEPTION 'adjust_failed: stock_in requires positive quantity_delta (got %)', p_quantity_delta;
+    END IF;
 
     UPDATE inventory_items
        SET available_quantity = available_quantity + p_quantity_delta,
