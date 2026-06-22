@@ -14,6 +14,7 @@ database schema、AWS database resource design、review guidance を code とし
 練習用 domain は EC サイトを想定しています。Aurora schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
 checkout の transaction 境界は [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md) に置いています。
+その境界を実際に動く PL/pgSQL として実装したものは [sql/](sql/README.md) にあります。
 DynamoDB の ShoppingCart、CustomerActivity、OrderLookup は
 `infra/terraform/dynamodb.tf` で定義しています。設計の詳細は上記 data model を参照してください。
 
@@ -201,8 +202,25 @@ Aurora へ直接接続しません。
 ├── docker-compose.yml
 ├── docs/
 ├── migrations/
-└── schema.sql
+├── schema.sql
+└── sql/
 ```
+
+## Checkout SQL の実装
+
+`sql/` に、`docs/ecommerce-checkout.md` の checkout 境界を Aurora PostgreSQL-compatible
+（PG16）の PL/pgSQL 関数として実装しています。schema は変更せず、既存テーブルの上で動く
+再利用可能な関数とデモを置いています。
+
+- `sql/functions/checkout_place_order.sql`: 販売状態・価格・在庫の再確認、oversell しない
+  単一 `UPDATE` での在庫引当、注文/明細/住所 snapshot 作成、決済記録を 1 トランザクションで行う。
+- `sql/functions/inventory_release_order.sql`: 注文取消時の在庫戻し。
+- `sql/functions/inventory_consume_order.sql`: 出荷時の在庫消費。
+- `sql/functions/inventory_adjust.sql`: 入庫・棚卸・手動調整。
+- `sql/examples/`: サンプルデータと、checkout 成功 → 在庫不足で失敗 → 取消 → 出荷を
+  通すデモ（`demo_checkout.sql`）。
+
+登録とデモの実行手順は [sql/README.md](sql/README.md) を参照してください。
 
 `atlas.hcl`、`docker-compose.yml`、`schema.sql` は local validation のための
 scaffolding です。AWS IaC tool を選定したタイミングで見直します。
