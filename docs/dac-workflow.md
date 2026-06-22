@@ -163,6 +163,8 @@ OIDC providerを重複作成しない。production stackを先にbootstrapする
 - plan jobはGitHub Environment `production-plan`を使用し、read-only OIDC roleでremote stateを読む。
   applyとAurora migrationはGitHub Environment `production`を共有し、required reviewersによる一回の承認後に
   同じCI-tested commitを順に処理する。
+- `production-plan`と`production`のdeployment branch rulesは、保護済みの`main`だけを許可する。
+  `production`にはrequired reviewersを設定し、Environmentを指定する任意workflowへの権限委譲を防ぐ。
 
 ### 単一CD pipeline
 
@@ -211,12 +213,15 @@ subjectはEnvironment単位で固定し、branch wildcardやrepository全体の�
   database credentialやRegistry read tokenを渡さない。
 
 GitHub Environment `production-plan`には`AWS_REGION`、`TF_STATE_BUCKET`、`TF_STATE_KEY`、
-`TF_STATE_LOCK_TABLE`、`TF_VPC_CIDR`、`AWS_TERRAFORM_PRODUCTION_PLAN_ROLE_ARN`を設定する。
-`production`には同じbackend/VPC variablesに加え、`AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN`、
+`TF_STATE_LOCK_TABLE`、`TF_VPC_CIDR`、`ATLAS_REGISTRY`、`AWS_TERRAFORM_PRODUCTION_PLAN_ROLE_ARN`を設定する。
+`production`には同じbackend/VPC/Registry variablesに加え、`AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN`、
 `AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN`、`PRODUCTION_CODEBUILD_PROJECT_NAME`を設定する。
 role ARNとproject nameはproduction Terraform outputsから登録する。Atlasのpublish/lintには既存の
 GitHub Actions Secret `ATLAS_TOKEN`（Atlas Cloud organization Bot token）を使い、CodeBuildが読む
 Registry read tokenはAWS Secrets Managerだけに保存する。
+
+`ATLAS_REGISTRY`はTerraformの`atlas_registry`入力と、GitHub Actionsがimmutable tagを公開するRegistry名を
+一致させるための唯一の設定値である。default値に依存せず、両Environmentへ同じ値を明示して登録する。
 
 ### Aurora production apply
 

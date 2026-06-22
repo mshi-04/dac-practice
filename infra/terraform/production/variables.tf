@@ -46,12 +46,31 @@ variable "aurora_min_capacity" {
   description = "Minimum Aurora Serverless v2 ACUs."
   type        = number
   default     = 0.5
+
+  validation {
+    condition = (
+      var.aurora_min_capacity >= 0.5 &&
+      var.aurora_min_capacity <= 128 &&
+      floor(var.aurora_min_capacity * 2) == var.aurora_min_capacity * 2 &&
+      var.aurora_min_capacity <= var.aurora_max_capacity
+    )
+    error_message = "aurora_min_capacity must be 0.5-128.0 in 0.5 increments and not exceed aurora_max_capacity."
+  }
 }
 
 variable "aurora_max_capacity" {
   description = "Maximum Aurora Serverless v2 ACUs."
   type        = number
   default     = 2
+
+  validation {
+    condition = (
+      var.aurora_max_capacity >= 0.5 &&
+      var.aurora_max_capacity <= 128 &&
+      floor(var.aurora_max_capacity * 2) == var.aurora_max_capacity * 2
+    )
+    error_message = "aurora_max_capacity must be 0.5-128.0 in 0.5 increments."
+  }
 }
 
 variable "aurora_backup_retention_period" {
