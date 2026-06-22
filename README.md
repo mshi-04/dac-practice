@@ -127,9 +127,10 @@ GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行しま�
 - `Terraform Plan`: `infra/terraform/` の内部 branch push で Terraform の format / validate を実行し、
   OIDC plan role 設定後は `terraform plan` も実行する。設定は
   [docs/dac-workflow.md#terraform-plan-の-ci-検証](docs/dac-workflow.md#terraform-plan-の-ci-検証) を参照する。
-- `Deploy production Terraform` / `Publish production Atlas Registry` / `Deploy production Aurora`:
-  `main` へのpushで `CI` が成功した場合だけ起動する本番CD。`develop`、PR、CI失敗、fork由来の
-  workflowからは本番のOIDC credentialを取得しない。
+- `Deploy production`: `main` へのpushで `CI` が成功した場合だけ起動する唯一の本番CD。
+  Terraform plan、Atlas validate/lint、GitHub Environment承認、Terraform apply、Atlas Registry公開、
+  Aurora migration applyを同一runで順に実行する。`develop`、PR、CI失敗、fork由来のworkflowからは
+  本番のOIDC credentialを取得しない。
 
 Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
 登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
@@ -139,15 +140,16 @@ Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の 
 ## Production CD
 
 `infra/terraform/production/` はverificationとは別のTerraform state、VPC、Aurora、DynamoDB、
-CodeBuild、IAM rolesを管理します。同一AWSアカウントのGitHub OIDC providerは既存のものを参照し、
-production stackで再作成しません。
+CodeBuild、IAM rolesを管理します。これらとAurora schema migrationは、`Deploy production`の単一CDで
+同じCI成功commitからデプロイします。GitHub OIDC providerはproduction stackが一度だけ管理し、
+verification stackは同providerをdata sourceで参照します。
 
-- **DynamoDB / Terraform**: CI成功後にread-only roleでproduction stateからplanを作成し、
-  GitHub Environment `production` のrequired reviewersがplanを確認して承認した後、別のapply roleで
-  保存済みbinary planを適用します。stateが変わってplanが古くなった場合、Terraform applyは失敗します。
-- **Aurora / Atlas**: CI成功後に対象commitをimmutable Registry SHA tagとして公開します。lintと
-  checksum validationが成功してから `production` の承認を待ち、private subnetのCodeBuildが
-  Secrets Managerから接続情報を取得してapplyします。GitHub-hosted runnerはAuroraへ接続しません。
+- **Terraform**: 対象commitでTerraform変更がある場合、read-only roleでplanを作成します。承認者はplanの
+  resource変更と課金影響を確認し、GitHub Environment `production`のrequired reviewersが承認した後、
+  別のapply roleで保存済みbinary planを適用します。stateが変わってplanが古くなった場合、applyは失敗します。
+- **Aurora / Atlas**: migration変更がある場合、同じrunでlintとchecksum validationを完了してから承認を待ちます。
+  承認後に対象commitをimmutable Registry SHA tagとして公開し、private subnetのCodeBuildがSecrets Managerから
+  接続情報を取得してapplyします。GitHub-hosted runnerはAuroraへ接続しません。
 - **原子性**: CodeBuildは `atlas migrate apply --tx-mode all` を使用します。pending migration全体を
   一つのtransactionで実行するため、non-transactional DDLを含むリリースは失敗します。失敗時は
   自動rollbackではなく、新しいforward migrationで修正します。

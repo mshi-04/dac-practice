@@ -156,27 +156,40 @@ OIDC providerを重複作成しない。production stackを先にbootstrapする
 
 ### 開始条件と承認
 
-- `Deploy production Terraform` と `Publish production Atlas Registry` は、同一repositoryの`main` pushに対する
-  `CI` workflowの成功した`workflow_run`だけを受け付ける。PR、fork、`develop`、CI失敗からは起動しない。
-- Terraform workflowは対象commitで`infra/terraform/production/`が変わった場合だけplanを作成する。
-  plan jobはGitHub Environment `production-plan` を使用し、read-only OIDC roleでremote stateを読取る。
-- Terraform applyとAurora applyはGitHub Environment `production` を使用する。`production`にはrequired reviewersを
-  設定し、`production-plan`には設定しない。applyは承認済みのCI-tested commitだけを対象にする。
-- `Publish production Atlas Registry` はCI-tested commit SHAをimmutable tagとして公開する。
-  `Deploy production Aurora` はその公開workflowの成功後にのみ起動し、lint/validateを承認前に再実行する。
+- 本番CDは`Deploy production`だけであり、同一repositoryの`main` pushに対する`CI` workflowが成功した
+  `workflow_run`だけを受け付ける。PR、fork、`develop`、CI失敗からは起動しない。
+- 対象commitで`infra/terraform/production/`が変わるとTerraform planを、`migrations/`または`atlas.hcl`が
+  変わるとAtlas validate/lintを実行する。両方が変わる場合も同一runに含める。
+- plan jobはGitHub Environment `production-plan`を使用し、read-only OIDC roleでremote stateを読む。
+  applyとAurora migrationはGitHub Environment `production`を共有し、required reviewersによる一回の承認後に
+  同じCI-tested commitを順に処理する。
 
-### Terraform production apply
+### 単一CD pipeline
 
-Terraform applyは`infra/terraform/production/`のroot全体に対して行う。DynamoDBだけを対象にした
-`-target` applyはstate整合性を壊すため使用しない。plan jobは短期保持のbinary planと、承認者向けの
-text summaryを出力する。binary planの保持期間は7日で、期限切れ時はGitHub Actionsで対象runを再実行して
-新しいplanを作る。apply jobは同じcommit、同じbackend、同じbinary planを使用する。
-stateが変更されてplanが古くなった場合はapplyを失敗させ、新しいCI成功commitから計画を作り直す。
+`Deploy production`は次の順で実行する。
 
-production stateのbackendはS3 object `dac-practice/production/terraform.tfstate` と専用DynamoDB lock tableを
-使う。`infra/terraform/bootstrap/`を別のproduction用bucket名と`project_name=dac-practice-production`で
-管理者が一度だけapplyし、bucket名・lock table名をGitHub Environment variableに登録する。production stackは
-CD roleを使う前に管理者権限で一度applyし、OIDC rolesとCodeBuildを作成する。以後の変更はCD roleだけで行う。
+1. Terraformのformat/validateと、保存可能なbinary planを作る。plan summaryには、承認者が作成・更新・削除と
+   課金影響を確認すべきことを明示する。
+2. migrationがある場合は、承認前に`atlas migrate validate`と`atlas migrate lint`を再実行する。lintが失敗すると
+   `production` Environmentのjobは開始しない。
+3. `production` Environmentの承認後、同一commitの保存済みbinary planを`infra/terraform/production/`全体へapplyする。
+   DynamoDBだけを対象にした`-target` applyはstate整合性を壊すため使用しない。
+4. migrationがある場合は、その同じcommit SHAをimmutable Atlas Registry tagとして公開し、VPC内CodeBuildへ渡す。
+   CodeBuildはAurora migrationを適用する。
+
+binary planの保持期間は7日で、期限切れ時は対象runを再実行して新しいplanを作る。stateが変更されてplanが古くなった
+場合はapplyを失敗させ、新しいCI成功commitから計画を作り直す。
+
+### 費用確認
+
+Terraform planがAurora、NAT gateway、Elastic IP、KMS key、CloudWatch Logs、backup retentionなどの
+費用に影響するresourceの作成・変更を示す場合、承認者は`production` Environmentを承認する前に、対象と
+課金要因を確認する。CDの設定・検証作業中にAWSへ`apply`を実行してresourceを作成してはならない。
+
+production stateのbackendはS3 object `dac-practice/production/terraform.tfstate`と専用DynamoDB lock tableを使う。
+`infra/terraform/bootstrap/`を別のproduction用bucket名と`project_name=dac-practice-production`で管理者が一度だけ
+applyし、bucket名・lock table名をGitHub Environment variableに登録する。production stackはCD roleを使う前に
+管理者権限で一度applyし、OIDC rolesとCodeBuildを作成する。以後の変更はCD roleだけで行う。
 
 ### IAM / OIDC要件
 
@@ -207,11 +220,9 @@ Registry read tokenはAWS Secrets Managerだけに保存する。
 
 ### Aurora production apply
 
-Aurora workflowはapproval前に`atlas migrate validate`と`atlas migrate lint`を再実行する。lintが
-destructive changeや互換性問題を検出した場合、`production` Environment jobは開始しない。承認後、
-GitHub ActionsはAuroraへ直接接続せず、immutable Registry SHAをCodeBuildへ渡す。CodeBuildは`set +x`のまま
-Secrets Managerからusername/passwordだけを取得し、Terraformから注入したAurora endpoint・port・database nameと
-組み合わせる。validate、status、dry-run、`atlas migrate apply --tx-mode all`、statusの順に実行する。
+単一CDの承認後、GitHub ActionsはAuroraへ直接接続せず、immutable Registry SHAをCodeBuildへ渡す。CodeBuildは
+`set +x`のままSecrets Managerからusername/passwordだけを取得し、Terraformから注入したAurora endpoint・port・
+database nameと組み合わせる。validate、status、dry-run、`atlas migrate apply --tx-mode all`、statusの順に実行する。
 
 `--tx-mode all`によりpending migration全体を単一transactionとして扱う。non-transactional DDLを含むmigrationは
 適用を失敗させる。失敗時に自動rollbackや既存migrationの書換えは行わず、確認後に新しいforward migrationを作成する。
@@ -220,12 +231,16 @@ production CodeBuild用のprivate subnetは、Atlas Registryとcontainer image�
 これはapplication traffic用の経路ではないため、costを優先して単一AZとする。可用性要件が変わる場合はAZごとのNAT gatewayへ
 変更し、NAT gatewayの時間・転送料金を改めてreviewする。
 
-### 初回workflow連鎖の確認
+Aurora automated backup retentionは`aurora_backup_retention_period`で明示する。現在のAWS Free Tier制約に
+合わせたdefaultは1日であり、account planをアップグレードしたproduction運用では、復旧要件に応じて7日以上へ
+引き上げてreviewする。
 
-`workflow_run`を使うproduction publish/deploy workflowは、workflow定義がdefault branch（`main`）に存在してから
-起動する。初回の`main`マージ後、次のproduction Terraformまたはmigration変更で、`CI`成功から
-`Publish production Atlas Registry`、`Deploy production Aurora`へ連鎖したrunが作られることをActions画面で確認する。
-runが作られない場合は、workflow名、default branch、`workflow_run`のsource branch条件を確認してから本番変更を続ける。
+### 初回workflow起動の確認
+
+`workflow_run`を使う`Deploy production`は、workflow定義がdefault branch（`main`）に存在してから起動する。
+初回の`main`マージ後、次のproduction Terraformまたはmigration変更で、`CI`成功から単一の`Deploy production` runが
+作られることをActions画面で確認する。runが作られない場合は、workflow名、default branch、`workflow_run`の
+source branch条件を確認してから本番変更を続ける。
 
 ## 採用 tool の考え方
 

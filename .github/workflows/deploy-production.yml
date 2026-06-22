@@ -1,7 +1,7 @@
-name: Deploy production Terraform
+name: Deploy production
 
-# Production Terraform CD starts only after the CI workflow succeeds for a main push.
-# The plan job is read-only; the production Environment approval gates the apply job.
+# This is the only production CD entry point. It runs only for a successful CI
+# workflow on main; PRs, develop, forks, and failed CI runs cannot obtain AWS credentials.
 on:
   workflow_run:
     workflows:
@@ -13,12 +13,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-terraform-deploy
+  group: production-deploy
   cancel-in-progress: false
 
 jobs:
   changes:
-    name: Check production Terraform changes
+    name: Check production changes
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
@@ -26,7 +26,8 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     outputs:
-      production_terraform: ${{ steps.paths.outputs.production_terraform }}
+      terraform: ${{ steps.paths.outputs.terraform }}
+      migrations: ${{ steps.paths.outputs.migrations }}
       target_sha: ${{ steps.target.outputs.sha }}
 
     steps:
@@ -34,8 +35,7 @@ jobs:
         id: target
         env:
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          printf 'sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
+        run: printf 'sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Checkout CI-tested commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -44,21 +44,26 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Detect production Terraform changes
+      - name: Detect production changes
         id: paths
         env:
           TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
           if git diff --quiet "$TARGET_SHA^" "$TARGET_SHA" -- infra/terraform/production; then
-            echo 'production_terraform=false' >> "$GITHUB_OUTPUT"
+            echo 'terraform=false' >> "$GITHUB_OUTPUT"
           else
-            echo 'production_terraform=true' >> "$GITHUB_OUTPUT"
+            echo 'terraform=true' >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --quiet "$TARGET_SHA^" "$TARGET_SHA" -- atlas.hcl migrations; then
+            echo 'migrations=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'migrations=true' >> "$GITHUB_OUTPUT"
           fi
 
-  static:
+  terraform_static:
     name: Validate production Terraform
     needs: changes
-    if: needs.changes.outputs.production_terraform == 'true'
+    if: needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -80,10 +85,10 @@ jobs:
           terraform -chdir=infra/terraform/production init -backend=false -reconfigure
           terraform -chdir=infra/terraform/production validate
 
-  plan:
-    name: Plan production Terraform
-    needs: [changes, static]
-    if: needs.changes.outputs.production_terraform == 'true'
+  terraform_plan:
+    name: Plan production infrastructure
+    needs: [changes, terraform_static]
+    if: needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     environment: production-plan
     permissions:
@@ -147,9 +152,9 @@ jobs:
             -var "terraform_state_lock_table_name=$TF_STATE_LOCK_TABLE"
           terraform -chdir=infra/terraform/production show -no-color "$RUNNER_TEMP/production.tfplan" > "$RUNNER_TEMP/production-plan.txt"
           {
-            echo '## Production Terraform plan'
+            echo '## Production infrastructure plan'
             echo
-            echo 'The approved apply job consumes the binary plan from this CI-tested commit.'
+            echo 'Review resource creation and cost-impacting changes before approving the production deployment.'
             echo
             echo '```'
             cat "$RUNNER_TEMP/production-plan.txt"
@@ -164,10 +169,46 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  apply:
-    name: Apply production Terraform
-    needs: [changes, plan]
-    if: needs.changes.outputs.production_terraform == 'true'
+  migration_preflight:
+    name: Validate production migration
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout CI-tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.changes.outputs.target_sha }}
+          persist-credentials: false
+
+      - name: Set up Atlas
+        uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
+
+      - name: Build pinned Atlas Action binary
+        uses: ariga/atlas-action/setup@e7cdee90ecc06996f1c055bc01a62f03666cecb4 # v1
+
+      - name: Validate migration directory
+        run: atlas migrate validate --dir file://migrations
+
+      - name: Lint the migration before approval
+        run: >-
+          atlas migrate lint
+          --dir file://migrations
+          --dev-url "docker://postgres/16/dev?search_path=public"
+
+  deploy:
+    name: Deploy production release
+    needs: [changes, terraform_static, terraform_plan, migration_preflight]
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      (needs.changes.outputs.terraform == 'true' || needs.changes.outputs.migrations == 'true') &&
+      (needs.terraform_static.result == 'success' || needs.terraform_static.result == 'skipped') &&
+      (needs.terraform_plan.result == 'success' || needs.terraform_plan.result == 'skipped') &&
+      (needs.migration_preflight.result == 'success' || needs.migration_preflight.result == 'skipped')
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 120
@@ -183,18 +224,21 @@ jobs:
           persist-credentials: false
 
       - name: Set up Terraform
+        if: needs.changes.outputs.terraform == 'true'
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: 1.15.6
           terraform_wrapper: false
 
       - name: Download approved Terraform plan
+        if: needs.changes.outputs.terraform == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: production-terraform-plan-${{ github.run_id }}
           path: ${{ runner.temp }}
 
-      - name: Obtain AWS apply credentials through GitHub OIDC
+      - name: Obtain AWS Terraform apply credentials through GitHub OIDC
+        if: needs.changes.outputs.terraform == 'true'
         uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN }}
@@ -203,6 +247,7 @@ jobs:
           role-duration-seconds: 7200
 
       - name: Initialize production Terraform state
+        if: needs.changes.outputs.terraform == 'true'
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
@@ -219,4 +264,61 @@ jobs:
             -backend-config="encrypt=true"
 
       - name: Apply the approved Terraform plan
+        if: needs.changes.outputs.terraform == 'true'
         run: terraform -chdir=infra/terraform/production apply -input=false "$RUNNER_TEMP/production.tfplan"
+
+      - name: Set up Atlas
+        if: needs.changes.outputs.migrations == 'true'
+        uses: ariga/setup-atlas@2f3c785c89a15e1c0d07bcae3900fb5feb969eea # v0
+        with:
+          cloud-token: ${{ secrets.ATLAS_TOKEN }}
+
+      - name: Publish immutable migration directory
+        if: needs.changes.outputs.migrations == 'true'
+        env:
+          MIGRATION_TAG: ${{ needs.changes.outputs.target_sha }}
+        run: >-
+          atlas migrate push dacpractice:${{ env.MIGRATION_TAG }}
+          --dev-url "docker://postgres/16/dev?search_path=public"
+
+      - name: Obtain AWS Aurora deployment credentials through GitHub OIDC
+        if: needs.changes.outputs.migrations == 'true'
+        uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
+        with:
+          role-to-assume: ${{ vars.AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-production-aurora-${{ github.run_id }}
+          role-duration-seconds: 3600
+
+      - name: Start VPC migration build
+        if: needs.changes.outputs.migrations == 'true'
+        id: migration_build
+        env:
+          CODEBUILD_PROJECT_NAME: ${{ vars.PRODUCTION_CODEBUILD_PROJECT_NAME }}
+          MIGRATION_TAG: ${{ needs.changes.outputs.target_sha }}
+        run: |
+          test -n "$CODEBUILD_PROJECT_NAME"
+          build_id="$(aws codebuild start-build \
+            --project-name "$CODEBUILD_PROJECT_NAME" \
+            --environment-variables-override \
+              "name=MIGRATION_TAG,value=$MIGRATION_TAG,type=PLAINTEXT" \
+            --query 'build.id' \
+            --output text)"
+          echo "id=$build_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for migration deployment result
+        if: needs.changes.outputs.migrations == 'true'
+        env:
+          BUILD_ID: ${{ steps.migration_build.outputs.id }}
+        run: |
+          for ((attempt = 1; attempt <= 240; attempt++)); do
+            status="$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)"
+            echo "CodeBuild status: $status"
+            case "$status" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo 'Timed out waiting for CodeBuild.' >&2
+          exit 1

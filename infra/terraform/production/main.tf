@@ -332,7 +332,7 @@ resource "aws_rds_cluster" "production" {
   vpc_security_group_ids          = [aws_security_group.aurora.id]
   storage_encrypted               = true
   kms_key_id                      = aws_kms_key.aurora.arn
-  backup_retention_period         = 7
+  backup_retention_period         = var.aurora_backup_retention_period
   preferred_backup_window         = "18:00-18:30"
   preferred_maintenance_window    = "sun:19:00-sun:19:30"
   deletion_protection             = var.deletion_protection

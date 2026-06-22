@@ -54,6 +54,17 @@ variable "aurora_max_capacity" {
   default     = 2
 }
 
+variable "aurora_backup_retention_period" {
+  description = "Number of days to retain Aurora automated backups."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.aurora_backup_retention_period >= 1 && var.aurora_backup_retention_period <= 35
+    error_message = "aurora_backup_retention_period must be between 1 and 35 days."
+  }
+}
+
 variable "aurora_log_retention_in_days" {
   description = "Retention period for exported Aurora PostgreSQL logs."
   type        = number
