@@ -168,7 +168,8 @@ VPC CIDR、Aurora/DynamoDB resources、CodeBuild、IAM roles、Secrets Manager s
 
 Terraform applyは`infra/terraform/production/`のroot全体に対して行う。DynamoDBだけを対象にした
 `-target` applyはstate整合性を壊すため使用しない。plan jobは短期保持のbinary planと、承認者向けの
-text summaryを出力する。apply jobは同じcommit、同じbackend、同じbinary planを使用する。
+text summaryを出力する。binary planの保持期間は7日で、期限切れ時はGitHub Actionsで対象runを再実行して
+新しいplanを作る。apply jobは同じcommit、同じbackend、同じbinary planを使用する。
 stateが変更されてplanが古くなった場合はapplyを失敗させ、新しいCI成功commitから計画を作り直す。
 
 production stateのbackendはS3 object `dac-practice/production/terraform.tfstate` と専用DynamoDB lock tableを
@@ -185,9 +186,12 @@ subjectはEnvironment単位で固定し、branch wildcardやrepository全体の�
   production Terraform resourcesのdescribe/list、state objectの`GetObject`、state bucketのprefix限定`ListBucket`だけを許可する。
 - production Terraform apply role: `repo:mshi-04/DacPractice:environment:production` のみを信頼する。
   production prefixのTerraform管理対象と、production state objectのread/write、専用lock tableのlock操作だけを許可する。
+  sessionは最大2時間とし、Auroraを伴うTerraform applyが15分を超えてもAWS credentialが失効しないようにする。
+  `iam:PassRole`はproduction CodeBuild service roleへの`codebuild.amazonaws.com`向けpassに限定し、
   `secretsmanager:GetSecretValue`は許可しない。
 - production Aurora deploy role: 同じ`production` subjectだけを信頼し、production CodeBuild projectの
-  `codebuild:StartBuild`と`codebuild:BatchGetBuilds`だけを許可する。
+  `codebuild:StartBuild`と`codebuild:BatchGetBuilds`だけを許可する。sessionは最大1時間とし、
+  CodeBuildの30分timeoutとworkflowの最大40分pollingをカバーする。
 - CodeBuild role: production AuroraのRDS管理secretとAtlas Registry read token secretに限り
   `secretsmanager:GetSecretValue`を許可する。GitHub Actionsのrole、workflow variable、artifact、logへ
   database credentialやRegistry read tokenを渡さない。
@@ -205,10 +209,22 @@ Registry read tokenはAWS Secrets Managerだけに保存する。
 Aurora workflowはapproval前に`atlas migrate validate`と`atlas migrate lint`を再実行する。lintが
 destructive changeや互換性問題を検出した場合、`production` Environment jobは開始しない。承認後、
 GitHub ActionsはAuroraへ直接接続せず、immutable Registry SHAをCodeBuildへ渡す。CodeBuildは`set +x`のまま
-Secrets Managerから値を取得し、validate、status、dry-run、`atlas migrate apply --tx-mode all`、statusの順に実行する。
+Secrets Managerからusername/passwordだけを取得し、Terraformから注入したAurora endpoint・port・database nameと
+組み合わせる。validate、status、dry-run、`atlas migrate apply --tx-mode all`、statusの順に実行する。
 
 `--tx-mode all`によりpending migration全体を単一transactionとして扱う。non-transactional DDLを含むmigrationは
 適用を失敗させる。失敗時に自動rollbackや既存migrationの書換えは行わず、確認後に新しいforward migrationを作成する。
+
+production CodeBuild用のprivate subnetは、Atlas Registryとcontainer image取得専用の単一NAT gatewayを経由する。
+これはapplication traffic用の経路ではないため、costを優先して単一AZとする。可用性要件が変わる場合はAZごとのNAT gatewayへ
+変更し、NAT gatewayの時間・転送料金を改めてreviewする。
+
+### 初回workflow連鎖の確認
+
+`workflow_run`を使うproduction publish/deploy workflowは、workflow定義がdefault branch（`main`）に存在してから
+起動する。初回の`main`マージ後、次のproduction Terraformまたはmigration変更で、`CI`成功から
+`Publish production Atlas Registry`、`Deploy production Aurora`へ連鎖したrunが作られることをActions画面で確認する。
+runが作られない場合は、workflow名、default branch、`workflow_run`のsource branch条件を確認してから本番変更を続ける。
 
 ## 採用 tool の考え方
 

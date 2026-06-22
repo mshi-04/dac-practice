@@ -191,6 +191,8 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "production" {
+  # This single NAT gateway is intentional: only CodeBuild uses the outbound
+  # path for Atlas Registry and image retrieval, not application traffic.
   allocation_id = aws_eip.nat.id
   subnet_id     = values(aws_subnet.public)[0].id
 
@@ -462,6 +464,21 @@ resource "aws_codebuild_project" "atlas_deploy" {
       name  = "DATABASE_SECRET_ID"
       value = aws_rds_cluster.production.master_user_secret[0].secret_arn
     }
+
+    environment_variable {
+      name  = "DATABASE_HOST"
+      value = aws_rds_cluster.production.endpoint
+    }
+
+    environment_variable {
+      name  = "DATABASE_PORT"
+      value = tostring(aws_rds_cluster.production.port)
+    }
+
+    environment_variable {
+      name  = "DATABASE_NAME"
+      value = aws_rds_cluster.production.database_name
+    }
   }
 
   source {
@@ -489,7 +506,8 @@ data "aws_iam_openid_connect_provider" "github" {
 }
 
 resource "aws_iam_role" "github_deploy" {
-  name = "${local.name_prefix}-github-deploy"
+  name                 = "${local.name_prefix}-github-deploy"
+  max_session_duration = 3600
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -630,7 +648,8 @@ resource "aws_iam_role_policy" "github_terraform_plan" {
 }
 
 resource "aws_iam_role" "github_terraform_apply" {
-  name = "${local.name_prefix}-github-terraform-apply"
+  name                 = "${local.name_prefix}-github-terraform-apply"
+  max_session_duration = 7200
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -703,7 +722,6 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
           "iam:GetRole",
           "iam:GetRolePolicy",
           "iam:ListRolePolicies",
-          "iam:PassRole",
           "iam:PutRolePolicy",
           "iam:TagRole",
           "iam:UntagRole",
@@ -750,6 +768,19 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
           "secretsmanager:UntagResource",
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "PassOnlyProductionCodeBuildRole"
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole",
+        ]
+        Resource = aws_iam_role.codebuild.arn
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "codebuild.amazonaws.com"
+          }
+        }
       },
       {
         Sid    = "ManageProductionTerraformState"

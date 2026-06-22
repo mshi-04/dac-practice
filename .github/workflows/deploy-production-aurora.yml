@@ -107,7 +107,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: github-production-aurora-${{ github.run_id }}
-          role-duration-seconds: 900
+          role-duration-seconds: 3600
 
       - name: Start VPC deployment build
         id: build

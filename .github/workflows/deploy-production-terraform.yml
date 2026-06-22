@@ -162,7 +162,7 @@ jobs:
           name: production-terraform-plan-${{ github.run_id }}
           path: ${{ runner.temp }}/production.tfplan
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   apply:
     name: Apply production Terraform
@@ -170,6 +170,7 @@ jobs:
     if: needs.changes.outputs.production_terraform == 'true'
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 120
     permissions:
       contents: read
       id-token: write
@@ -199,7 +200,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: github-production-terraform-apply-${{ github.run_id }}
-          role-duration-seconds: 900
+          role-duration-seconds: 7200
 
       - name: Initialize production Terraform state
         env:
