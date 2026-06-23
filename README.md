@@ -14,6 +14,7 @@ database schema、AWS database resource design、review guidance を code とし
 練習用 domain は EC サイトを想定しています。Aurora schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
 checkout の transaction 境界は [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md) に置いています。
+その境界を実際に動く PL/pgSQL として実装したものは [sql/](sql/README.md) にあります。
 DynamoDB の ShoppingCart、CustomerActivity、OrderLookup は
 `infra/terraform/dynamodb.tf` で定義しています。設計の詳細は上記 data model を参照してください。
 
@@ -37,6 +38,7 @@ local validation では PostgreSQL 16 と Atlas migration を使います。
 - [docs/dynamodb-guidelines.md](docs/dynamodb-guidelines.md)
 - [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md)
 - [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md)
+- [docs/ecommerce-consistency-recovery.md](docs/ecommerce-consistency-recovery.md)
 - [docs/change-review-guidelines.md](docs/change-review-guidelines.md)
 
 ## Aurora Local Validation
@@ -67,6 +69,53 @@ atlas migrate test --env local "$env:TEMP/migrate.test.hcl"
 atlas migrate validate --env local
 ```
 
+## Local Seed Data
+
+`seeds/ecommerce_local_seed.sql` は、ローカル PostgreSQL で商品検索、在庫確認、
+checkout を試すためのデータです。`customers`、`product_categories`、`products`、
+`inventory_items` に、active / draft / archived の商品と引当済み在庫を含むサンプルを投入します。
+Atlas migration ではなくローカル検証専用の SQL のため、shared environment には適用しません。
+
+各テーブルの自然キー（email / slug / SKU / product_id）で UPSERT するため、seed は繰り返し
+実行できます。再実行時は、対象レコードの値と在庫数が seed 定義の値に戻ります。
+
+```powershell
+# schema を適用済みにする
+docker compose up -d db
+$env:DATABASE_URL = "postgres://app:app_password@localhost:5432/appdb?search_path=public&sslmode=disable"
+atlas migrate apply --env local
+
+# psql が host にある場合
+$pg = "postgres://app:app_password@localhost:5432/appdb?sslmode=disable"
+psql $pg -v ON_ERROR_STOP=1 -f seeds/ecommerce_local_seed.sql
+```
+
+checkout と全ての代表 query を試す場合は、関数を登録してから検証用クエリを実行します。
+`seeds/verify_representative_queries.sql` は checkout、配送 event、在庫更新を transaction 内で
+生成して、最後に `ROLLBACK` します。永続化されるのは seed データだけです。
+
+```powershell
+$pg = "postgres://app:app_password@localhost:5432/appdb?sslmode=disable"
+Get-ChildItem sql/functions/*.sql | Sort-Object Name | ForEach-Object {
+  psql $pg -v ON_ERROR_STOP=1 -f $_.FullName
+}
+psql $pg -v ON_ERROR_STOP=1 -f seeds/verify_representative_queries.sql
+```
+
+host に `psql` がない場合は、repo をコンテナへコピーして実行します。
+
+```powershell
+docker compose cp seeds db:/tmp/seeds
+docker compose cp sql/functions db:/tmp/functions
+docker compose exec -T db sh -c 'for file in /tmp/functions/*.sql; do psql -v ON_ERROR_STOP=1 -U app -d appdb -f "$file"; done'
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U app -d appdb -f /tmp/seeds/ecommerce_local_seed.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U app -d appdb -f /tmp/seeds/verify_representative_queries.sql
+```
+
+検証クエリは [docs/ecommerce-data-model.md の Aurora の代表 query](docs/ecommerce-data-model.md#aurora-の代表-query)
+を対象にしています。checkout の成功・在庫不足・取消・出荷の連続デモは
+[sql/README.md](sql/README.md) の `sql/examples/` を使用してください。
+
 ## CI
 
 GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行します。
@@ -78,11 +127,35 @@ GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行しま�
 - `Terraform Plan`: `infra/terraform/` の内部 branch push で Terraform の format / validate を実行し、
   OIDC plan role 設定後は `terraform plan` も実行する。設定は
   [docs/dac-workflow.md#terraform-plan-の-ci-検証](docs/dac-workflow.md#terraform-plan-の-ci-検証) を参照する。
+- `Deploy production`: `main` へのpushで `CI` が成功した場合だけ起動する唯一の本番CD。
+  Terraform plan、Atlas validate/lint、GitHub Environment承認、Terraform apply、Atlas Registry公開、
+  Aurora migration applyを同一runで順に実行する。`develop`、PR、CI失敗、fork由来のworkflowからは
+  本番のOIDC credentialを取得しない。
 
 Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
 登録する必要があります。Bot は Atlas Cloud の organization settings で作成します。詳細は
 [docs/dac-workflow.md#atlas-registry-公開](docs/dac-workflow.md#atlas-registry-公開) と
 [docs/change-review-guidelines.md#ci-の扱い](docs/change-review-guidelines.md#ci-の扱い) を参照してください。
+
+## Production CD
+
+`infra/terraform/production/` はverificationとは別のTerraform state、VPC、Aurora、DynamoDB、
+CodeBuild、IAM rolesを管理します。これらとAurora schema migrationは、`Deploy production`の単一CDで
+同じCI成功commitからデプロイします。GitHub OIDC providerはproduction stackが一度だけ管理し、
+verification stackは同providerをdata sourceで参照します。
+
+- **Terraform**: 対象commitでTerraform変更がある場合、read-only roleでplanを作成します。承認者はplanの
+  resource変更と課金影響を確認し、GitHub Environment `production`のrequired reviewersが承認した後、
+  別のapply roleで保存済みbinary planを適用します。stateが変わってplanが古くなった場合、applyは失敗します。
+- **Aurora / Atlas**: migration変更がある場合、同じrunでlintとchecksum validationを完了してから承認を待ちます。
+  承認後に対象commitをimmutable Registry SHA tagとして公開し、private subnetのCodeBuildがSecrets Managerから
+  接続情報を取得してapplyします。GitHub-hosted runnerはAuroraへ接続しません。
+- **原子性**: CodeBuildは `atlas migrate apply --tx-mode all` を使用します。pending migration全体を
+  一つのtransactionで実行するため、non-transactional DDLを含むリリースは失敗します。失敗時は
+  自動rollbackではなく、新しいforward migrationで修正します。
+
+初回bootstrap、GitHub Environment variables、OIDC roleの最小権限は
+[docs/dac-workflow.md#production-cd](docs/dac-workflow.md#production-cd) を参照してください。
 
 ## Verification Aurora Deployment
 
@@ -92,8 +165,9 @@ Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の 
 
 #### 1. State bucket の bootstrap
 
-`infra/terraform/bootstrap/` は main stack の remote state を保存する S3 bucket を作成します。
-versioning、server-side encryption、public access block を有効にし、非 TLS access を拒否します。
+`infra/terraform/bootstrap/` は main stack の remote state を保存する S3 bucket と、state 操作を
+直列化する DynamoDB lock table を作成します。S3 bucket は versioning、server-side encryption、
+public access block を有効にし、非 TLS access を拒否します。
 この stack は state bucket 自体を作るため local state を使い、backend block を持ちません。
 
 ```powershell
@@ -105,15 +179,15 @@ terraform plan -var "aws_region=<region>" -var "state_bucket_name=<globally-uniq
 terraform apply -var "aws_region=<region>" -var "state_bucket_name=<globally-unique-bucket>"
 ```
 
-`backend.hcl` 自体は Git 管理しません。bootstrap で出力した bucket 名を `backend.hcl` に書き、
-main Terraform を初期化します。
+`backend.hcl` 自体は Git 管理しません。bootstrap で出力した bucket 名と lock table 名を
+`backend.hcl` に書き、main Terraform を初期化します。
 
 #### 2. Main stack の初期化と plan/apply
 
 ```powershell
 Set-Location infra/terraform
 Copy-Item backend.hcl.example backend.hcl
-# backend.hcl の bucket に bootstrap で作成した bucket 名を設定する。
+# backend.hcl の bucket と dynamodb_table に bootstrap の出力値を設定する。
 terraform init -backend-config=backend.hcl
 terraform fmt -check
 terraform validate
@@ -149,8 +223,8 @@ Aurora へ直接接続しません。
 
 検証環境を最初に立ち上げ、手動 deploy で公開済み tag を適用するまでの実行順です。
 
-1. **State bootstrap**: `infra/terraform/bootstrap/` を apply し、state bucket を作成する。
-2. **Terraform plan / apply**: bucket 名を `backend.hcl` に設定して main stack を init し、
+1. **State bootstrap**: `infra/terraform/bootstrap/` を apply し、state bucket と lock table を作成する。
+2. **Terraform plan / apply**: bucket 名と lock table 名を `backend.hcl` に設定して main stack を init し、
    plan で差分を確認してから apply する。Aurora、VPC、NAT gateway、CodeBuild、OIDC role、
    Secrets Manager secret などが作成される。
 3. **Atlas Registry read token の Secrets Manager 登録**: Terraform が作成した
@@ -200,8 +274,26 @@ Aurora へ直接接続しません。
 ├── docker-compose.yml
 ├── docs/
 ├── migrations/
-└── schema.sql
+├── seeds/
+├── schema.sql
+└── sql/
 ```
+
+## Checkout SQL の実装
+
+`sql/` に、`docs/ecommerce-checkout.md` の checkout 境界を Aurora PostgreSQL-compatible
+（PG16）の PL/pgSQL 関数として実装しています。schema は変更せず、既存テーブルの上で動く
+再利用可能な関数とデモを置いています。
+
+- `sql/functions/checkout_place_order.sql`: 販売状態・価格・在庫の再確認、oversell しない
+  単一 `UPDATE` での在庫引当、注文/明細/住所 snapshot 作成、決済記録を 1 トランザクションで行う。
+- `sql/functions/inventory_release_order.sql`: 注文取消時の在庫戻し。
+- `sql/functions/inventory_consume_order.sql`: 出荷時の在庫消費。
+- `sql/functions/inventory_adjust.sql`: 入庫・棚卸・手動調整。
+- `sql/examples/`: サンプルデータと、checkout 成功 → 在庫不足で失敗 → 取消 → 出荷を
+  通すデモ（`demo_checkout.sql`）。
+
+登録とデモの実行手順は [sql/README.md](sql/README.md) を参照してください。
 
 `atlas.hcl`、`docker-compose.yml`、`schema.sql` は local validation のための
 scaffolding です。AWS IaC tool を選定したタイミングで見直します。

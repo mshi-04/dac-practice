@@ -65,6 +65,7 @@ CREATE TABLE inventory_items (
   available_quantity INTEGER NOT NULL DEFAULT 0 CHECK (available_quantity >= 0),
   reserved_quantity INTEGER NOT NULL DEFAULT 0 CHECK (reserved_quantity >= 0),
   reorder_threshold INTEGER NOT NULL DEFAULT 0 CHECK (reorder_threshold >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK (available_quantity >= reserved_quantity)
 );

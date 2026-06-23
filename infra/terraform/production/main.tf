@@ -123,11 +123,11 @@ data "aws_iam_policy_document" "dynamodb_kms" {
 }
 
 locals {
-  name_prefix = "${var.project_name}-verification"
+  name_prefix = "${var.project_name}-production"
   azs         = slice(data.aws_availability_zones.available.names, 0, 2)
 }
 
-resource "aws_vpc" "verification" {
+resource "aws_vpc" "production" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
@@ -137,8 +137,8 @@ resource "aws_vpc" "verification" {
   }
 }
 
-resource "aws_internet_gateway" "verification" {
-  vpc_id = aws_vpc.verification.id
+resource "aws_internet_gateway" "production" {
+  vpc_id = aws_vpc.production.id
 
   tags = {
     Name = "${local.name_prefix}-igw"
@@ -148,7 +148,7 @@ resource "aws_internet_gateway" "verification" {
 resource "aws_subnet" "public" {
   for_each = toset(local.azs)
 
-  vpc_id                  = aws_vpc.verification.id
+  vpc_id                  = aws_vpc.production.id
   availability_zone       = each.value
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, index(local.azs, each.value))
   map_public_ip_on_launch = true
@@ -161,7 +161,7 @@ resource "aws_subnet" "public" {
 resource "aws_subnet" "private" {
   for_each = toset(local.azs)
 
-  vpc_id            = aws_vpc.verification.id
+  vpc_id            = aws_vpc.production.id
   availability_zone = each.value
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, 10 + index(local.azs, each.value))
 
@@ -171,11 +171,11 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.verification.id
+  vpc_id = aws_vpc.production.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.verification.id
+    gateway_id = aws_internet_gateway.production.id
   }
 }
 
@@ -190,11 +190,13 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 }
 
-resource "aws_nat_gateway" "verification" {
+resource "aws_nat_gateway" "production" {
+  # This single NAT gateway is intentional: only CodeBuild uses the outbound
+  # path for Atlas Registry and image retrieval, not application traffic.
   allocation_id = aws_eip.nat.id
   subnet_id     = values(aws_subnet.public)[0].id
 
-  depends_on = [aws_internet_gateway.verification]
+  depends_on = [aws_internet_gateway.production]
 
   tags = {
     Name = "${local.name_prefix}-nat"
@@ -202,11 +204,11 @@ resource "aws_nat_gateway" "verification" {
 }
 
 resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.verification.id
+  vpc_id = aws_vpc.production.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.verification.id
+    nat_gateway_id = aws_nat_gateway.production.id
   }
 }
 
@@ -220,13 +222,13 @@ resource "aws_route_table_association" "private" {
 resource "aws_security_group" "codebuild" {
   name        = "${local.name_prefix}-codebuild"
   description = "Outbound access for the Atlas deployment build."
-  vpc_id      = aws_vpc.verification.id
+  vpc_id      = aws_vpc.production.id
 }
 
 resource "aws_security_group" "aurora" {
   name        = "${local.name_prefix}-aurora"
   description = "Accept PostgreSQL only from the deployment build."
-  vpc_id      = aws_vpc.verification.id
+  vpc_id      = aws_vpc.production.id
 
   ingress {
     description     = "PostgreSQL from CodeBuild"
@@ -238,7 +240,7 @@ resource "aws_security_group" "aurora" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "codebuild_to_aurora" {
-  description                  = "PostgreSQL to verification Aurora"
+  description                  = "PostgreSQL to production Aurora"
   security_group_id            = aws_security_group.codebuild.id
   referenced_security_group_id = aws_security_group.aurora.id
   from_port                    = 5432
@@ -281,11 +283,11 @@ resource "aws_db_subnet_group" "aurora" {
 resource "aws_rds_cluster_parameter_group" "aurora" {
   name        = "${local.name_prefix}-aurora-postgresql16"
   family      = "aurora-postgresql16"
-  description = "Parameter group for the verification Aurora PostgreSQL cluster."
+  description = "Parameter group for the production Aurora PostgreSQL cluster."
 }
 
 resource "aws_kms_key" "aurora" {
-  description             = "Encryption key for verification Aurora storage."
+  description             = "Encryption key for production Aurora storage."
   deletion_window_in_days = 7
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.aurora_kms.json
@@ -297,7 +299,7 @@ resource "aws_kms_alias" "aurora" {
 }
 
 resource "aws_kms_key" "dynamodb" {
-  description             = "Encryption key for verification DynamoDB tables."
+  description             = "Encryption key for production DynamoDB tables."
   deletion_window_in_days = 7
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.dynamodb_kms.json
@@ -318,7 +320,7 @@ resource "aws_cloudwatch_log_group" "codebuild" {
   retention_in_days = var.codebuild_log_retention_in_days
 }
 
-resource "aws_rds_cluster" "verification" {
+resource "aws_rds_cluster" "production" {
   cluster_identifier              = "${local.name_prefix}-aurora"
   engine                          = "aurora-postgresql"
   engine_version                  = var.aurora_engine_version
@@ -330,7 +332,7 @@ resource "aws_rds_cluster" "verification" {
   vpc_security_group_ids          = [aws_security_group.aurora.id]
   storage_encrypted               = true
   kms_key_id                      = aws_kms_key.aurora.arn
-  backup_retention_period         = 7
+  backup_retention_period         = var.aurora_backup_retention_period
   preferred_backup_window         = "18:00-18:30"
   preferred_maintenance_window    = "sun:19:00-sun:19:30"
   deletion_protection             = var.deletion_protection
@@ -346,11 +348,11 @@ resource "aws_rds_cluster" "verification" {
   }
 }
 
-resource "aws_rds_cluster_instance" "verification" {
+resource "aws_rds_cluster_instance" "production" {
   identifier          = "${local.name_prefix}-instance-1"
-  cluster_identifier  = aws_rds_cluster.verification.id
-  engine              = aws_rds_cluster.verification.engine
-  engine_version      = aws_rds_cluster.verification.engine_version
+  cluster_identifier  = aws_rds_cluster.production.id
+  engine              = aws_rds_cluster.production.engine
+  engine_version      = aws_rds_cluster.production.engine_version
   instance_class      = "db.serverless"
   publicly_accessible = false
 }
@@ -393,7 +395,7 @@ resource "aws_iam_role_policy" "codebuild" {
         Resource = "*"
         Condition = {
           StringEquals = {
-            "ec2:Vpc"           = aws_vpc.verification.arn
+            "ec2:Vpc"           = aws_vpc.production.arn
             "ec2:Subnet"        = values(aws_subnet.private)[*].arn
             "ec2:SecurityGroup" = aws_security_group.codebuild.arn
           }
@@ -406,7 +408,7 @@ resource "aws_iam_role_policy" "codebuild" {
         Resource = "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:network-interface/*"
         Condition = {
           StringEquals = {
-            "ec2:Vpc" = aws_vpc.verification.arn
+            "ec2:Vpc" = aws_vpc.production.arn
           }
         }
       },
@@ -419,7 +421,7 @@ resource "aws_iam_role_policy" "codebuild" {
       {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
-        Resource = [aws_secretsmanager_secret.atlas_registry_token.arn, aws_rds_cluster.verification.master_user_secret[0].secret_arn]
+        Resource = [aws_secretsmanager_secret.atlas_registry_token.arn, aws_rds_cluster.production.master_user_secret[0].secret_arn]
       }
     ]
   })
@@ -427,7 +429,7 @@ resource "aws_iam_role_policy" "codebuild" {
 
 resource "aws_codebuild_project" "atlas_deploy" {
   name          = "${local.name_prefix}-atlas-deploy"
-  description   = "Applies an immutable Atlas Registry migration tag to verification Aurora."
+  description   = "Applies an immutable Atlas Registry migration tag to production Aurora."
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = 30
 
@@ -460,7 +462,22 @@ resource "aws_codebuild_project" "atlas_deploy" {
 
     environment_variable {
       name  = "DATABASE_SECRET_ID"
-      value = aws_rds_cluster.verification.master_user_secret[0].secret_arn
+      value = aws_rds_cluster.production.master_user_secret[0].secret_arn
+    }
+
+    environment_variable {
+      name  = "DATABASE_HOST"
+      value = aws_rds_cluster.production.endpoint
+    }
+
+    environment_variable {
+      name  = "DATABASE_PORT"
+      value = tostring(aws_rds_cluster.production.port)
+    }
+
+    environment_variable {
+      name  = "DATABASE_NAME"
+      value = aws_rds_cluster.production.database_name
     }
   }
 
@@ -478,29 +495,32 @@ resource "aws_codebuild_project" "atlas_deploy" {
   }
 
   vpc_config {
-    vpc_id             = aws_vpc.verification.id
+    vpc_id             = aws_vpc.production.id
     subnets            = values(aws_subnet.private)[*].id
     security_group_ids = [aws_security_group.codebuild.id]
   }
 }
 
-data "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
+resource "aws_iam_openid_connect_provider" "github" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 resource "aws_iam_role" "github_deploy" {
-  name = "${local.name_prefix}-github-deploy"
+  name                 = "${local.name_prefix}-github-deploy"
+  max_session_duration = 3600
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Federated = data.aws_iam_openid_connect_provider.github.arn }
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:aurora-verification"
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:production"
         }
       }
     }]
@@ -528,12 +548,12 @@ resource "aws_iam_role" "github_terraform_plan" {
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Federated = data.aws_iam_openid_connect_provider.github.arn }
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:terraform-plan"
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:production-plan"
         }
       }
     }]
@@ -603,6 +623,199 @@ resource "aws_iam_role_policy" "github_terraform_plan" {
           "secretsmanager:ListTagsForResource",
         ]
         Resource = aws_secretsmanager_secret.atlas_registry_token.arn
+      },
+      {
+        Sid    = "ReadProductionTerraformState"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+        ]
+        Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}/${var.terraform_state_key}"
+      },
+      {
+        Sid    = "ListProductionTerraformStateBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+        ]
+        Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [var.terraform_state_key]
+          }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role" "github_terraform_apply" {
+  name                 = "${local.name_prefix}-github-terraform-apply"
+  max_session_duration = 7200
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:production"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "github_terraform_apply" {
+  name = "${local.name_prefix}-github-terraform-apply"
+  role = aws_iam_role.github_terraform_apply.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ManageProductionInfrastructure"
+        Effect = "Allow"
+        Action = [
+          "codebuild:*Project",
+          "codebuild:TagResource",
+          "codebuild:UntagResource",
+          "dynamodb:CreateTable",
+          "dynamodb:DeleteTable",
+          "dynamodb:DescribeTable",
+          "dynamodb:DescribeTimeToLive",
+          "dynamodb:DescribeContinuousBackups",
+          "dynamodb:ListTagsOfResource",
+          "dynamodb:TagResource",
+          "dynamodb:UntagResource",
+          "dynamodb:UpdateContinuousBackups",
+          "dynamodb:UpdateTable",
+          "ec2:AllocateAddress",
+          "ec2:AssociateRouteTable",
+          "ec2:AttachInternetGateway",
+          "ec2:CreateInternetGateway",
+          "ec2:CreateNatGateway",
+          "ec2:CreateRoute",
+          "ec2:CreateRouteTable",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateSubnet",
+          "ec2:CreateTags",
+          "ec2:CreateVpc",
+          "ec2:DeleteInternetGateway",
+          "ec2:DeleteNatGateway",
+          "ec2:DeleteRoute",
+          "ec2:DeleteRouteTable",
+          "ec2:DeleteSecurityGroup",
+          "ec2:DeleteSubnet",
+          "ec2:DeleteVpc",
+          "ec2:Describe*",
+          "ec2:DetachInternetGateway",
+          "ec2:DisassociateRouteTable",
+          "ec2:ModifySubnetAttribute",
+          "ec2:ModifyVpcAttribute",
+          "ec2:ReleaseAddress",
+          "ec2:ReplaceRoute",
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:DeleteRolePolicy",
+          "iam:GetRole",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:PutRolePolicy",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "kms:CreateAlias",
+          "kms:CreateGrant",
+          "kms:CreateKey",
+          "kms:DescribeKey",
+          "kms:DisableKey",
+          "kms:EnableKeyRotation",
+          "kms:GetKeyPolicy",
+          "kms:GetKeyRotationStatus",
+          "kms:ListAliases",
+          "kms:ListResourceTags",
+          "kms:PutKeyPolicy",
+          "kms:ScheduleKeyDeletion",
+          "kms:TagResource",
+          "kms:UntagResource",
+          "logs:CreateLogGroup",
+          "logs:DeleteLogGroup",
+          "logs:DescribeLogGroups",
+          "logs:ListTagsForResource",
+          "logs:PutRetentionPolicy",
+          "logs:TagResource",
+          "logs:UntagResource",
+          "rds:AddTagsToResource",
+          "rds:CreateDBCluster",
+          "rds:CreateDBClusterParameterGroup",
+          "rds:CreateDBInstance",
+          "rds:DeleteDBCluster",
+          "rds:DeleteDBClusterParameterGroup",
+          "rds:DeleteDBInstance",
+          "rds:Describe*",
+          "rds:ListTagsForResource",
+          "rds:ModifyDBCluster",
+          "rds:ModifyDBClusterParameterGroup",
+          "rds:ModifyDBInstance",
+          "rds:RemoveTagsFromResource",
+          "secretsmanager:CreateSecret",
+          "secretsmanager:DeleteSecret",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:ListSecrets",
+          "secretsmanager:ListTagsForResource",
+          "secretsmanager:TagResource",
+          "secretsmanager:UntagResource",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "PassOnlyProductionCodeBuildRole"
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole",
+        ]
+        Resource = aws_iam_role.codebuild.arn
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "codebuild.amazonaws.com"
+          }
+        }
+      },
+      {
+        Sid    = "ManageProductionTerraformState"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+        ]
+        Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}/${var.terraform_state_key}"
+      },
+      {
+        Sid    = "ListProductionTerraformStateBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+        ]
+        Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [var.terraform_state_key]
+          }
+        }
+      },
+      {
+        Sid    = "LockProductionTerraformState"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:DeleteItem",
+          "dynamodb:DescribeTable",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+        ]
+        Resource = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.terraform_state_lock_table_name}"
       },
     ]
   })

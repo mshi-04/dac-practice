@@ -1,10 +1,10 @@
 variable "aws_region" {
-  description = "AWS Region for the verification environment."
+  description = "AWS Region for the production environment."
   type        = string
 }
 
 variable "project_name" {
-  description = "Prefix used for verification resources."
+  description = "Prefix used for production resources."
   type        = string
   default     = "dac-practice"
 }
@@ -16,9 +16,24 @@ variable "github_repository" {
 }
 
 variable "vpc_cidr" {
-  description = "CIDR block dedicated to the verification environment."
+  description = "CIDR block dedicated to the production environment."
   type        = string
-  default     = "10.40.0.0/16"
+}
+
+variable "terraform_state_bucket_name" {
+  description = "S3 bucket that stores the production Terraform state."
+  type        = string
+}
+
+variable "terraform_state_key" {
+  description = "Object key of the production Terraform state."
+  type        = string
+  default     = "dac-practice/production/terraform.tfstate"
+}
+
+variable "terraform_state_lock_table_name" {
+  description = "DynamoDB table used to lock the production Terraform state."
+  type        = string
 }
 
 variable "aurora_engine_version" {
@@ -31,12 +46,42 @@ variable "aurora_min_capacity" {
   description = "Minimum Aurora Serverless v2 ACUs."
   type        = number
   default     = 0.5
+
+  validation {
+    condition = (
+      var.aurora_min_capacity >= 0.5 &&
+      var.aurora_min_capacity <= 128 &&
+      floor(var.aurora_min_capacity * 2) == var.aurora_min_capacity * 2 &&
+      var.aurora_min_capacity <= var.aurora_max_capacity
+    )
+    error_message = "aurora_min_capacity must be 0.5-128.0 in 0.5 increments and not exceed aurora_max_capacity."
+  }
 }
 
 variable "aurora_max_capacity" {
   description = "Maximum Aurora Serverless v2 ACUs."
   type        = number
   default     = 2
+
+  validation {
+    condition = (
+      var.aurora_max_capacity >= 0.5 &&
+      var.aurora_max_capacity <= 128 &&
+      floor(var.aurora_max_capacity * 2) == var.aurora_max_capacity * 2
+    )
+    error_message = "aurora_max_capacity must be 0.5-128.0 in 0.5 increments."
+  }
+}
+
+variable "aurora_backup_retention_period" {
+  description = "Number of days to retain Aurora automated backups."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.aurora_backup_retention_period >= 1 && var.aurora_backup_retention_period <= 35
+    error_message = "aurora_backup_retention_period must be between 1 and 35 days."
+  }
 }
 
 variable "aurora_log_retention_in_days" {
@@ -51,7 +96,7 @@ variable "aurora_log_retention_in_days" {
 }
 
 variable "deletion_protection" {
-  description = "Protect the verification cluster from accidental deletion."
+  description = "Protect the production cluster from accidental deletion."
   type        = bool
   default     = true
 }

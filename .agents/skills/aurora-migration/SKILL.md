@@ -21,7 +21,7 @@ Aurora PostgreSQL の relational schema を Atlas の versioned migration で変
 3. `atlas schema validate --env local` で構文・整合を確認する。
 4. `atlas migrate diff --env local "<動詞_対象>"` で migration を生成する。
 5. `atlas migrate lint --env local --latest 1` で破壊的変更・後方互換性を確認する。
-6. `atlas migrate test --env local` でテストする（atlas login が要る場合あり）。
+6. 最新 migration を指定した `migrate.test.hcl` を渡して `atlas migrate test --env local <test-file>` を実行する（atlas login が要る場合あり）。
 7. `atlas migrate apply --env local --dry-run` で preview してから apply する。
 8. `atlas migrate status --env local` で状態を確認する。
 
@@ -30,3 +30,8 @@ Aurora PostgreSQL の relational schema を Atlas の versioned migration で変
 - destructive change（DROP、型変更）と backfill は分割し、安全な順序で段階適用する。
 - migration file を手で編集したら `atlas migrate hash --env local` を実行する。
 - production 適用は別 workflow。rollback ではなく forward fix を基本にする。
+
+## 完了条件
+
+`git diff --check`、`atlas migrate validate --env local`、`atlas migrate lint --env local --latest 1` を実行する。
+apply する場合は dry-run の結果を確認する。実行できない検証は理由を報告する。

@@ -1,8 +1,7 @@
-# The bootstrap stack creates the S3 bucket that stores the main stack's remote
-# state. It intentionally uses local state (no backend block) to avoid the
-# chicken-and-egg problem of storing state in a bucket that does not exist yet.
 terraform {
   required_version = ">= 1.9.0, < 2.0.0"
+
+  backend "s3" {}
 
   required_providers {
     aws = {
@@ -19,7 +18,7 @@ provider "aws" {
     tags = {
       ManagedBy   = "Terraform"
       Project     = var.project_name
-      Environment = "bootstrap"
+      Environment = "production"
     }
   }
 }

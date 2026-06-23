@@ -92,10 +92,11 @@ Registry read token は AWS Secrets Manager に保存し、GitHub Actions には
 CodeBuild、GitHub OIDC role を管理する。CodeBuild だけが Aurora の PostgreSQL port に接続できる。
 private subnet の CodeBuild は Atlas Registry と container image を取得するため NAT gateway を経由する。
 
-Terraform state backend は `infra/terraform/bootstrap/` で作成した暗号化 S3 bucket を使う。
-bootstrap stack は versioning、server-side encryption、public access block を有効にし、
-非 TLS access を拒否する。state bucket 自体を作るため local state を使い backend block を持たない。
-`backend.hcl` は Git に含めず、`backend.hcl.example` をコピーして bootstrap で得た bucket 名を設定する。
+Terraform state backend は `infra/terraform/bootstrap/` で作成した暗号化 S3 bucket と DynamoDB lock table を使う。
+bootstrap stack は versioning、customer managed KMS key による server-side encryption、public access block を有効にし、
+非 TLS access を拒否する。DynamoDB table は `LockID` を partition key として state 操作を直列化する。
+state bucket 自体を作るため local state を使い backend block を持たない。`backend.hcl` は Git に含めず、
+`backend.hcl.example` をコピーして bootstrap で得た bucket 名と lock table 名を設定する。
 検証環境を作る前に、Atlas Registry read token を Terraform が作成する Secrets Manager secret に登録する。
 
 ### Terraform plan の CI 検証
@@ -121,8 +122,8 @@ branch に対応する open PR がある場合は、plan の結果を PR コメ�
 検証環境の初回構築から手動 deploy までは次の順で実行する。詳細手順とコマンドは README の
 「初回運用 runbook」を参照する。
 
-1. State bootstrap: `infra/terraform/bootstrap/` を apply し、state 用 S3 bucket を作成する。
-2. Terraform plan / apply: bucket 名を `backend.hcl` に設定して main stack を init し、
+1. State bootstrap: `infra/terraform/bootstrap/` を apply し、state 用 S3 bucket と lock table を作成する。
+2. Terraform plan / apply: bucket 名と lock table 名を `backend.hcl` に設定して main stack を init し、
    plan を確認してから apply する。
 3. Atlas Registry read token の Secrets Manager 登録: Terraform が作成した secret に token を投入する。
    token 値は Git・workflow・Terraform code に残さない。
@@ -144,6 +145,107 @@ Aurora Serverless v2、NAT gateway、backup retention、KMS key は稼働中・�
 - `migrations/*.sql` と `migrations/atlas.sum` は `.gitattributes` で LF に固定する。
 - Atlas の checksum は migration file のバイト列を比較するため、Windows の CRLF 変換を
   許可しない。
+
+## Production CD
+
+productionはverificationと同一AWSアカウント内に置くが、Terraform state、resource prefix、
+VPC CIDR、Aurora/DynamoDB resources、CodeBuild、IAM roles、Secrets Manager secretsは分離する。
+共有するGitHub OIDC providerは`infra/terraform/production/`がTerraform stateで管理する。
+`infra/terraform/`のverification stackは同providerをdata sourceで参照するため、同一アカウント内に
+OIDC providerを重複作成しない。production stackを先にbootstrapする。
+
+### 開始条件と承認
+
+- 本番CDは`Deploy production`だけであり、同一repositoryの`main` pushに対する`CI` workflowが成功した
+  `workflow_run`だけを受け付ける。PR、fork、`develop`、CI失敗からは起動しない。
+- 対象commitで`infra/terraform/production/`が変わるとTerraform planを、`migrations/`または`atlas.hcl`が
+  変わるとAtlas validate/lintを実行する。両方が変わる場合も同一runに含める。
+- plan jobはGitHub Environment `production-plan`を使用し、read-only OIDC roleでremote stateを読む。
+  applyとAurora migrationはGitHub Environment `production`を共有し、required reviewersによる一回の承認後に
+  同じCI-tested commitを順に処理する。
+- `production-plan`と`production`のdeployment branch rulesは、保護済みの`main`だけを許可する。
+  `production`にはrequired reviewersを設定し、Environmentを指定する任意workflowへの権限委譲を防ぐ。
+
+### 単一CD pipeline
+
+`Deploy production`は次の順で実行する。
+
+1. Terraformのformat/validateと、保存可能なbinary planを作る。plan summaryには、承認者が作成・更新・削除と
+   課金影響を確認すべきことを明示する。
+2. migrationがある場合は、承認前に`atlas migrate validate`と`atlas migrate lint`を再実行する。lintが失敗すると
+   `production` Environmentのjobは開始しない。
+3. `production` Environmentの承認後、同一commitの保存済みbinary planを`infra/terraform/production/`全体へapplyする。
+   DynamoDBだけを対象にした`-target` applyはstate整合性を壊すため使用しない。
+4. migrationがある場合は、その同じcommit SHAをimmutable Atlas Registry tagとして公開し、VPC内CodeBuildへ渡す。
+   CodeBuildはAurora migrationを適用する。
+
+binary planの保持期間は7日で、期限切れ時は対象runを再実行して新しいplanを作る。stateが変更されてplanが古くなった
+場合はapplyを失敗させ、新しいCI成功commitから計画を作り直す。
+
+### 費用確認
+
+Terraform planがAurora、NAT gateway、Elastic IP、KMS key、CloudWatch Logs、backup retentionなどの
+費用に影響するresourceの作成・変更を示す場合、承認者は`production` Environmentを承認する前に、対象と
+課金要因を確認する。CDの設定・検証作業中にAWSへ`apply`を実行してresourceを作成してはならない。
+
+production stateのbackendはS3 object `dac-practice/production/terraform.tfstate`と専用DynamoDB lock tableを使う。
+`infra/terraform/bootstrap/`を別のproduction用bucket名と`project_name=dac-practice-production`で管理者が一度だけ
+applyし、bucket名・lock table名をGitHub Environment variableに登録する。production stackはCD roleを使う前に
+管理者権限で一度applyし、OIDC rolesとCodeBuildを作成する。以後の変更はCD roleだけで行う。
+
+### IAM / OIDC要件
+
+GitHub OIDC trust policyはすべて`token.actions.githubusercontent.com:aud`を`sts.amazonaws.com`に固定する。
+subjectはEnvironment単位で固定し、branch wildcardやrepository全体の信頼は許可しない。
+
+- production plan role: `repo:mshi-04/DacPractice:environment:production-plan` のみを信頼する。
+  production Terraform resourcesのdescribe/list、state objectの`GetObject`、state bucketのprefix限定`ListBucket`だけを許可する。
+- production Terraform apply role: `repo:mshi-04/DacPractice:environment:production` のみを信頼する。
+  production prefixのTerraform管理対象と、production state objectのread/write、専用lock tableのlock操作だけを許可する。
+  sessionは最大2時間とし、Auroraを伴うTerraform applyが15分を超えてもAWS credentialが失効しないようにする。
+  `iam:PassRole`はproduction CodeBuild service roleへの`codebuild.amazonaws.com`向けpassに限定し、
+  `secretsmanager:GetSecretValue`は許可しない。
+- production Aurora deploy role: 同じ`production` subjectだけを信頼し、production CodeBuild projectの
+  `codebuild:StartBuild`と`codebuild:BatchGetBuilds`だけを許可する。sessionは最大1時間とし、
+  CodeBuildの30分timeoutとworkflowの最大40分pollingをカバーする。
+- CodeBuild role: production AuroraのRDS管理secretとAtlas Registry read token secretに限り
+  `secretsmanager:GetSecretValue`を許可する。GitHub Actionsのrole、workflow variable、artifact、logへ
+  database credentialやRegistry read tokenを渡さない。
+
+GitHub Environment `production-plan`には`AWS_REGION`、`TF_STATE_BUCKET`、`TF_STATE_KEY`、
+`TF_STATE_LOCK_TABLE`、`TF_VPC_CIDR`、`ATLAS_REGISTRY`、`AWS_TERRAFORM_PRODUCTION_PLAN_ROLE_ARN`を設定する。
+`production`には同じbackend/VPC/Registry variablesに加え、`AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN`、
+`AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN`、`PRODUCTION_CODEBUILD_PROJECT_NAME`を設定する。
+role ARNとproject nameはproduction Terraform outputsから登録する。Atlasのpublish/lintには既存の
+GitHub Actions Secret `ATLAS_TOKEN`（Atlas Cloud organization Bot token）を使い、CodeBuildが読む
+Registry read tokenはAWS Secrets Managerだけに保存する。
+
+`ATLAS_REGISTRY`はTerraformの`atlas_registry`入力と、GitHub Actionsがimmutable tagを公開するRegistry名を
+一致させるための唯一の設定値である。default値に依存せず、両Environmentへ同じ値を明示して登録する。
+
+### Aurora production apply
+
+単一CDの承認後、GitHub ActionsはAuroraへ直接接続せず、immutable Registry SHAをCodeBuildへ渡す。CodeBuildは
+`set +x`のままSecrets Managerからusername/passwordだけを取得し、Terraformから注入したAurora endpoint・port・
+database nameと組み合わせる。validate、status、dry-run、`atlas migrate apply --tx-mode all`、statusの順に実行する。
+
+`--tx-mode all`によりpending migration全体を単一transactionとして扱う。non-transactional DDLを含むmigrationは
+適用を失敗させる。失敗時に自動rollbackや既存migrationの書換えは行わず、確認後に新しいforward migrationを作成する。
+
+production CodeBuild用のprivate subnetは、Atlas Registryとcontainer image取得専用の単一NAT gatewayを経由する。
+これはapplication traffic用の経路ではないため、costを優先して単一AZとする。可用性要件が変わる場合はAZごとのNAT gatewayへ
+変更し、NAT gatewayの時間・転送料金を改めてreviewする。
+
+Aurora automated backup retentionは`aurora_backup_retention_period`で明示する。現在のAWS Free Tier制約に
+合わせたdefaultは1日であり、account planをアップグレードしたproduction運用では、復旧要件に応じて7日以上へ
+引き上げてreviewする。
+
+### 初回workflow起動の確認
+
+`workflow_run`を使う`Deploy production`は、workflow定義がdefault branch（`main`）に存在してから起動する。
+初回の`main`マージ後、次のproduction Terraformまたはmigration変更で、`CI`成功から単一の`Deploy production` runが
+作られることをActions画面で確認する。runが作られない場合は、workflow名、default branch、`workflow_run`の
+source branch条件を確認してから本番変更を続ける。
 
 ## 採用 tool の考え方
 
