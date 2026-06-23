@@ -31,11 +31,6 @@ variable "terraform_state_key" {
   default     = "dac-practice/production/terraform.tfstate"
 }
 
-variable "terraform_state_lock_table_name" {
-  description = "DynamoDB table used to lock the production Terraform state."
-  type        = string
-}
-
 variable "aurora_engine_version" {
   description = "Aurora PostgreSQL-compatible engine version."
   type        = string

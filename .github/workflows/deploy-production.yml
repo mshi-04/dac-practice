@@ -154,16 +154,14 @@ jobs:
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
-          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
         run: |
           test -n "$TF_STATE_BUCKET"
           test -n "$TF_STATE_KEY"
-          test -n "$TF_STATE_LOCK_TABLE"
           terraform -chdir=infra/terraform/production init -input=false -reconfigure \
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="key=$TF_STATE_KEY" \
             -backend-config="region=${{ vars.AWS_REGION }}" \
-            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true"
 
       - name: Create production Terraform plan
@@ -171,7 +169,6 @@ jobs:
           AWS_REGION: ${{ vars.AWS_REGION }}
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
-          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
           TF_VPC_CIDR: ${{ vars.TF_VPC_CIDR }}
           ATLAS_REGISTRY: ${{ vars.ATLAS_REGISTRY }}
         run: |
@@ -185,8 +182,7 @@ jobs:
             -var "vpc_cidr=$TF_VPC_CIDR" \
             -var "atlas_registry=$ATLAS_REGISTRY" \
             -var "terraform_state_bucket_name=$TF_STATE_BUCKET" \
-            -var "terraform_state_key=$TF_STATE_KEY" \
-            -var "terraform_state_lock_table_name=$TF_STATE_LOCK_TABLE"
+            -var "terraform_state_key=$TF_STATE_KEY"
           terraform -chdir=infra/terraform/production show -no-color "$RUNNER_TEMP/production.tfplan" > "$RUNNER_TEMP/production-plan.txt"
           {
             echo '## Production infrastructure plan'
@@ -288,16 +284,14 @@ jobs:
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
-          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
         run: |
           test -n "$TF_STATE_BUCKET"
           test -n "$TF_STATE_KEY"
-          test -n "$TF_STATE_LOCK_TABLE"
           terraform -chdir=infra/terraform/production init -input=false -reconfigure \
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="key=$TF_STATE_KEY" \
             -backend-config="region=${{ vars.AWS_REGION }}" \
-            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true"
 
       - name: Apply the approved Terraform plan

@@ -802,7 +802,7 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
         Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}"
         Condition = {
           StringLike = {
-            "s3:prefix" = [var.terraform_state_key]
+            "s3:prefix" = [var.terraform_state_key, "${var.terraform_state_key}.tflock"]
           }
         }
       },
@@ -810,12 +810,11 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
         Sid    = "LockProductionTerraformState"
         Effect = "Allow"
         Action = [
-          "dynamodb:DeleteItem",
-          "dynamodb:DescribeTable",
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
+          "s3:DeleteObject",
+          "s3:GetObject",
+          "s3:PutObject",
         ]
-        Resource = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.terraform_state_lock_table_name}"
+        Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}/${var.terraform_state_key}.tflock"
       },
     ]
   })
