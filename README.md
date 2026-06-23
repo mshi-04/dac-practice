@@ -165,8 +165,9 @@ verification stackは同providerをdata sourceで参照します。
 
 #### 1. State bucket の bootstrap
 
-`infra/terraform/bootstrap/` は main stack の remote state を保存する S3 bucket と、state 操作を
-直列化する DynamoDB lock table を作成します。S3 bucket は versioning、server-side encryption、
+`infra/terraform/bootstrap/` は main stack の remote state を保存する S3 bucket を作成します。
+state lock は S3 native locking（`use_lockfile=true`、`<key>.tflock` object）で行うため、別途の
+DynamoDB lock table は作成しません。S3 bucket は versioning、server-side encryption、
 public access block を有効にし、非 TLS access を拒否します。
 この stack は state bucket 自体を作るため local state を使い、backend block を持ちません。
 
@@ -179,7 +180,7 @@ terraform plan -var "aws_region=<region>" -var "state_bucket_name=<globally-uniq
 terraform apply -var "aws_region=<region>" -var "state_bucket_name=<globally-unique-bucket>"
 ```
 
-`backend.hcl` 自体は Git 管理しません。bootstrap で出力した bucket 名と lock table 名を
+`backend.hcl` 自体は Git 管理しません。bootstrap で出力した bucket 名を
 `backend.hcl` に書き、main Terraform を初期化します。
 
 #### 2. Main stack の初期化と plan/apply
@@ -187,7 +188,7 @@ terraform apply -var "aws_region=<region>" -var "state_bucket_name=<globally-uni
 ```powershell
 Set-Location infra/terraform
 Copy-Item backend.hcl.example backend.hcl
-# backend.hcl の bucket と dynamodb_table に bootstrap の出力値を設定する。
+# backend.hcl の bucket に bootstrap の出力値を設定する（lock は use_lockfile=true）。
 terraform init -backend-config=backend.hcl
 terraform fmt -check
 terraform validate
@@ -223,8 +224,8 @@ Aurora へ直接接続しません。
 
 検証環境を最初に立ち上げ、手動 deploy で公開済み tag を適用するまでの実行順です。
 
-1. **State bootstrap**: `infra/terraform/bootstrap/` を apply し、state bucket と lock table を作成する。
-2. **Terraform plan / apply**: bucket 名と lock table 名を `backend.hcl` に設定して main stack を init し、
+1. **State bootstrap**: `infra/terraform/bootstrap/` を apply し、state bucket を作成する（lock は S3 native locking）。
+2. **Terraform plan / apply**: bucket 名を `backend.hcl` に設定して main stack を init し、
    plan で差分を確認してから apply する。Aurora、VPC、NAT gateway、CodeBuild、OIDC role、
    Secrets Manager secret などが作成される。
 3. **Atlas Registry read token の Secrets Manager 登録**: Terraform が作成した

@@ -39,7 +39,7 @@ jobs:
         run: printf 'sha=%s\n' "$TARGET_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Checkout CI-tested commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ steps.target.outputs.sha }}
           fetch-depth: 0
@@ -102,13 +102,13 @@ jobs:
 
     steps:
       - name: Checkout CI-tested commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ needs.changes.outputs.target_sha }}
           persist-credentials: false
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: 1.15.6
           terraform_wrapper: false
@@ -131,13 +131,13 @@ jobs:
 
     steps:
       - name: Checkout CI-tested commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ needs.changes.outputs.target_sha }}
           persist-credentials: false
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: 1.15.6
           terraform_wrapper: false
@@ -154,16 +154,14 @@ jobs:
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
-          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
         run: |
           test -n "$TF_STATE_BUCKET"
           test -n "$TF_STATE_KEY"
-          test -n "$TF_STATE_LOCK_TABLE"
           terraform -chdir=infra/terraform/production init -input=false -reconfigure \
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="key=$TF_STATE_KEY" \
             -backend-config="region=${{ vars.AWS_REGION }}" \
-            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true"
 
       - name: Create production Terraform plan
@@ -171,7 +169,6 @@ jobs:
           AWS_REGION: ${{ vars.AWS_REGION }}
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
-          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
           TF_VPC_CIDR: ${{ vars.TF_VPC_CIDR }}
           ATLAS_REGISTRY: ${{ vars.ATLAS_REGISTRY }}
         run: |
@@ -185,8 +182,7 @@ jobs:
             -var "vpc_cidr=$TF_VPC_CIDR" \
             -var "atlas_registry=$ATLAS_REGISTRY" \
             -var "terraform_state_bucket_name=$TF_STATE_BUCKET" \
-            -var "terraform_state_key=$TF_STATE_KEY" \
-            -var "terraform_state_lock_table_name=$TF_STATE_LOCK_TABLE"
+            -var "terraform_state_key=$TF_STATE_KEY"
           terraform -chdir=infra/terraform/production show -no-color "$RUNNER_TEMP/production.tfplan" > "$RUNNER_TEMP/production-plan.txt"
           {
             echo '## Production infrastructure plan'
@@ -199,7 +195,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload approved Terraform plan
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: production-terraform-plan-${{ github.run_id }}
           path: ${{ runner.temp }}/production.tfplan
@@ -214,7 +210,7 @@ jobs:
 
     steps:
       - name: Checkout CI-tested commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ needs.changes.outputs.target_sha }}
           persist-credentials: false
@@ -255,21 +251,21 @@ jobs:
 
     steps:
       - name: Checkout CI-tested commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ needs.changes.outputs.target_sha }}
           persist-credentials: false
 
       - name: Set up Terraform
         if: needs.changes.outputs.terraform == 'true'
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: 1.15.6
           terraform_wrapper: false
 
       - name: Download approved Terraform plan
         if: needs.changes.outputs.terraform == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: production-terraform-plan-${{ github.run_id }}
           path: ${{ runner.temp }}
@@ -288,16 +284,14 @@ jobs:
         env:
           TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
-          TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
         run: |
           test -n "$TF_STATE_BUCKET"
           test -n "$TF_STATE_KEY"
-          test -n "$TF_STATE_LOCK_TABLE"
           terraform -chdir=infra/terraform/production init -input=false -reconfigure \
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="key=$TF_STATE_KEY" \
             -backend-config="region=${{ vars.AWS_REGION }}" \
-            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true"
 
       - name: Apply the approved Terraform plan

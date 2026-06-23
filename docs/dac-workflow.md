@@ -92,11 +92,12 @@ Registry read token は AWS Secrets Manager に保存し、GitHub Actions には
 CodeBuild、GitHub OIDC role を管理する。CodeBuild だけが Aurora の PostgreSQL port に接続できる。
 private subnet の CodeBuild は Atlas Registry と container image を取得するため NAT gateway を経由する。
 
-Terraform state backend は `infra/terraform/bootstrap/` で作成した暗号化 S3 bucket と DynamoDB lock table を使う。
+Terraform state backend は `infra/terraform/bootstrap/` で作成した暗号化 S3 bucket を使う。
 bootstrap stack は versioning、customer managed KMS key による server-side encryption、public access block を有効にし、
-非 TLS access を拒否する。DynamoDB table は `LockID` を partition key として state 操作を直列化する。
+非 TLS access を拒否する。state lock は S3 native locking（`use_lockfile=true`）で行い、`<key>.tflock` object を使う。
+別途の DynamoDB lock table は持たない。
 state bucket 自体を作るため local state を使い backend block を持たない。`backend.hcl` は Git に含めず、
-`backend.hcl.example` をコピーして bootstrap で得た bucket 名と lock table 名を設定する。
+`backend.hcl.example` をコピーして bootstrap で得た bucket 名を設定する。
 検証環境を作る前に、Atlas Registry read token を Terraform が作成する Secrets Manager secret に登録する。
 
 ### Terraform plan の CI 検証
@@ -122,8 +123,8 @@ branch に対応する open PR がある場合は、plan の結果を PR コメ�
 検証環境の初回構築から手動 deploy までは次の順で実行する。詳細手順とコマンドは README の
 「初回運用 runbook」を参照する。
 
-1. State bootstrap: `infra/terraform/bootstrap/` を apply し、state 用 S3 bucket と lock table を作成する。
-2. Terraform plan / apply: bucket 名と lock table 名を `backend.hcl` に設定して main stack を init し、
+1. State bootstrap: `infra/terraform/bootstrap/` を apply し、state 用 S3 bucket を作成する（lock は S3 native locking）。
+2. Terraform plan / apply: bucket 名を `backend.hcl` に設定して main stack を init し、
    plan を確認してから apply する。
 3. Atlas Registry read token の Secrets Manager 登録: Terraform が作成した secret に token を投入する。
    token 値は Git・workflow・Terraform code に残さない。
@@ -188,9 +189,9 @@ Terraform planがAurora、NAT gateway、Elastic IP、KMS key、CloudWatch Logs�
 費用に影響するresourceの作成・変更を示す場合、承認者は`production` Environmentを承認する前に、対象と
 課金要因を確認する。CDの設定・検証作業中にAWSへ`apply`を実行してresourceを作成してはならない。
 
-production stateのbackendはS3 object `dac-practice/production/terraform.tfstate`と専用DynamoDB lock tableを使う。
-`infra/terraform/bootstrap/`を別のproduction用bucket名と`project_name=dac-practice-production`で管理者が一度だけ
-applyし、bucket名・lock table名をGitHub Environment variableに登録する。production stackはCD roleを使う前に
+production stateのbackendはS3 object `dac-practice/production/terraform.tfstate`を使い、lockはS3 native locking
+（`use_lockfile=true`、`<key>.tflock` object）で行う。`infra/terraform/bootstrap/`を別のproduction用bucket名と
+`project_name=dac-practice-production`で管理者が一度だけapplyし、bucket名をGitHub Environment variableに登録する。production stackはCD roleを使う前に
 管理者権限で一度applyし、OIDC rolesとCodeBuildを作成する。以後の変更はCD roleだけで行う。
 
 ### IAM / OIDC要件
@@ -201,7 +202,7 @@ subjectはEnvironment単位で固定し、branch wildcardやrepository全体の�
 - production plan role: `repo:mshi-04/DacPractice:environment:production-plan` のみを信頼する。
   production Terraform resourcesのdescribe/list、state objectの`GetObject`、state bucketのprefix限定`ListBucket`だけを許可する。
 - production Terraform apply role: `repo:mshi-04/DacPractice:environment:production` のみを信頼する。
-  production prefixのTerraform管理対象と、production state objectのread/write、専用lock tableのlock操作だけを許可する。
+  production prefixのTerraform管理対象と、production state objectのread/write、`<key>.tflock` objectのlock操作だけを許可する。
   sessionは最大2時間とし、Auroraを伴うTerraform applyが15分を超えてもAWS credentialが失効しないようにする。
   `iam:PassRole`はproduction CodeBuild service roleへの`codebuild.amazonaws.com`向けpassに限定し、
   `secretsmanager:GetSecretValue`は許可しない。
@@ -213,7 +214,7 @@ subjectはEnvironment単位で固定し、branch wildcardやrepository全体の�
   database credentialやRegistry read tokenを渡さない。
 
 GitHub Environment `production-plan`には`AWS_REGION`、`TF_STATE_BUCKET`、`TF_STATE_KEY`、
-`TF_STATE_LOCK_TABLE`、`TF_VPC_CIDR`、`ATLAS_REGISTRY`、`AWS_TERRAFORM_PRODUCTION_PLAN_ROLE_ARN`を設定する。
+`TF_VPC_CIDR`、`ATLAS_REGISTRY`、`AWS_TERRAFORM_PRODUCTION_PLAN_ROLE_ARN`を設定する。
 `production`には同じbackend/VPC/Registry variablesに加え、`AWS_TERRAFORM_PRODUCTION_APPLY_ROLE_ARN`、
 `AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN`、`PRODUCTION_CODEBUILD_PROJECT_NAME`を設定する。
 role ARNとproject nameはproduction Terraform outputsから登録する。Atlasのpublish/lintには既存の
