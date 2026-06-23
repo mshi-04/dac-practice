@@ -1,6 +1,6 @@
 # Copy to backend.hcl, replace the values, and keep the copy untracked.
-bucket  = "replace-with-terraform-state-bucket"
-key     = "dac-practice/production/terraform.tfstate"
-region  = "replace-with-aws-region"
-encrypt = true
-dynamodb_table = "replace-with-terraform-state-lock-table"
+bucket       = "replace-with-terraform-state-bucket"
+key          = "dac-practice/production/terraform.tfstate"
+region       = "replace-with-aws-region"
+encrypt      = true
+use_lockfile = true

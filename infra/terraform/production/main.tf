@@ -336,8 +336,8 @@ resource "aws_rds_cluster" "production" {
   preferred_backup_window         = "18:00-18:30"
   preferred_maintenance_window    = "sun:19:00-sun:19:30"
   deletion_protection             = var.deletion_protection
-  skip_final_snapshot             = false
-  final_snapshot_identifier       = "${local.name_prefix}-final"
+  skip_final_snapshot             = var.aurora_skip_final_snapshot
+  final_snapshot_identifier       = var.aurora_skip_final_snapshot ? null : "${local.name_prefix}-final"
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
   depends_on = [aws_cloudwatch_log_group.aurora_postgresql]
@@ -802,7 +802,7 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
         Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}"
         Condition = {
           StringLike = {
-            "s3:prefix" = [var.terraform_state_key]
+            "s3:prefix" = [var.terraform_state_key, "${var.terraform_state_key}.tflock"]
           }
         }
       },
@@ -810,12 +810,11 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
         Sid    = "LockProductionTerraformState"
         Effect = "Allow"
         Action = [
-          "dynamodb:DeleteItem",
-          "dynamodb:DescribeTable",
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
+          "s3:DeleteObject",
+          "s3:GetObject",
+          "s3:PutObject",
         ]
-        Resource = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.terraform_state_lock_table_name}"
+        Resource = "arn:aws:s3:::${var.terraform_state_bucket_name}/${var.terraform_state_key}.tflock"
       },
     ]
   })
