@@ -22,6 +22,7 @@ infra/terraform/**/*.tfstate
 infra/terraform/**/*.tfstate.*
 infra/terraform/**/*.tfvars
 infra/terraform/**/*.tfvars.json
+infra/terraform/**/*.tfplan
 infra/terraform/backend.hcl
 infra/terraform/production/backend.hcl
 

@@ -98,6 +98,12 @@ variable "aurora_log_retention_in_days" {
 variable "deletion_protection" {
   description = "Protect the production cluster from accidental deletion."
   type        = bool
+  default     = false
+}
+
+variable "aurora_skip_final_snapshot" {
+  description = "Skip the final snapshot on cluster deletion so the stack can be torn down repeatably."
+  type        = bool
   default     = true
 }
 
@@ -126,7 +132,7 @@ variable "dynamodb_billing_mode" {
 variable "dynamodb_deletion_protection_enabled" {
   description = "Protect DynamoDB tables from accidental deletion."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "dynamodb_table_class" {

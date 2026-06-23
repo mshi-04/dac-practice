@@ -336,8 +336,8 @@ resource "aws_rds_cluster" "production" {
   preferred_backup_window         = "18:00-18:30"
   preferred_maintenance_window    = "sun:19:00-sun:19:30"
   deletion_protection             = var.deletion_protection
-  skip_final_snapshot             = false
-  final_snapshot_identifier       = "${local.name_prefix}-final"
+  skip_final_snapshot             = var.aurora_skip_final_snapshot
+  final_snapshot_identifier       = var.aurora_skip_final_snapshot ? null : "${local.name_prefix}-final"
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
   depends_on = [aws_cloudwatch_log_group.aurora_postgresql]
