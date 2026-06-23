@@ -697,6 +697,7 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
         Effect = "Allow"
         Action = [
           "codebuild:*Project",
+          "codebuild:BatchGetProjects",
           "codebuild:TagResource",
           "codebuild:UntagResource",
           "dynamodb:CreateTable",
@@ -737,6 +738,7 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
           "iam:CreateRole",
           "iam:DeleteRole",
           "iam:DeleteRolePolicy",
+          "iam:GetOpenIDConnectProvider",
           "iam:GetRole",
           "iam:GetRolePolicy",
           "iam:ListRolePolicies",
@@ -780,6 +782,7 @@ resource "aws_iam_role_policy" "github_terraform_apply" {
           "secretsmanager:CreateSecret",
           "secretsmanager:DeleteSecret",
           "secretsmanager:DescribeSecret",
+          "secretsmanager:GetResourcePolicy",
           "secretsmanager:ListSecrets",
           "secretsmanager:ListTagsForResource",
           "secretsmanager:TagResource",
