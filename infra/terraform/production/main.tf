@@ -587,7 +587,9 @@ resource "aws_iam_role_policy" "github_terraform_plan" {
         Sid    = "ReadDynamoDBTables"
         Effect = "Allow"
         Action = [
+          "dynamodb:DescribeContinuousBackups",
           "dynamodb:DescribeTable",
+          "dynamodb:DescribeTimeToLive",
           "dynamodb:ListTagsOfResource",
         ]
         Resource = [
@@ -606,23 +608,37 @@ resource "aws_iam_role_policy" "github_terraform_plan" {
         Resource = aws_codebuild_project.atlas_deploy.arn
       },
       {
-        Sid    = "ReadAuroraEncryptionKey"
+        Sid    = "ReadEncryptionKeys"
         Effect = "Allow"
         Action = [
           "kms:DescribeKey",
           "kms:GetKeyPolicy",
           "kms:GetKeyRotationStatus",
+          "kms:ListResourceTags",
         ]
-        Resource = aws_kms_key.aurora.arn
+        Resource = [
+          aws_kms_key.aurora.arn,
+          aws_kms_key.dynamodb.arn,
+        ]
       },
       {
         Sid    = "ReadRegistryTokenSecretMetadata"
         Effect = "Allow"
         Action = [
           "secretsmanager:DescribeSecret",
+          "secretsmanager:GetResourcePolicy",
           "secretsmanager:ListTagsForResource",
         ]
         Resource = aws_secretsmanager_secret.atlas_registry_token.arn
+      },
+      {
+        Sid    = "ReadProductionLogGroups"
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogGroups",
+          "logs:ListTagsForResource",
+        ]
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:*"
       },
       {
         Sid    = "ReadProductionTerraformState"
