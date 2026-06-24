@@ -314,13 +314,13 @@ jobs:
           atlas migrate push "${ATLAS_REGISTRY}:${MIGRATION_TAG}" \
             --dev-url "docker://postgres/16/dev?search_path=public"
 
-      - name: Obtain AWS Aurora deployment credentials through GitHub OIDC
+      - name: Obtain AWS RDS PostgreSQL deployment credentials through GitHub OIDC
         if: needs.changes.outputs.migrations == 'true'
         uses: aws-actions/configure-aws-credentials@e7f100cf4c008499ea8adda475de1042d6975c7b # v6.2.0
         with:
-          role-to-assume: ${{ vars.AWS_PRODUCTION_AURORA_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_PRODUCTION_RDS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-          role-session-name: github-production-aurora-${{ github.run_id }}
+          role-session-name: github-production-rds-${{ github.run_id }}
           role-duration-seconds: 3600
 
       - name: Start VPC migration build

@@ -1,9 +1,13 @@
-output "aurora_endpoint" {
-  value = aws_rds_cluster.verification.endpoint
+output "postgres_endpoint" {
+  value = aws_db_instance.postgres.address
+}
+
+output "aws_region" {
+  value = var.aws_region
 }
 
 output "database_secret_arn" {
-  value     = aws_rds_cluster.verification.master_user_secret[0].secret_arn
+  value     = aws_db_instance.postgres.master_user_secret[0].secret_arn
   sensitive = true
 }
 

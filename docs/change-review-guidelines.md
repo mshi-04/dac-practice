@@ -3,18 +3,18 @@
 ## 目的
 
 Database as Code の変更は、application code の変更と同じように review 可能であるべきです。
-この文書は、Aurora、DynamoDB、AWS resource 定義、migration の変更を見る観点をまとめます。
+この文書は、RDS PostgreSQL、DynamoDB、AWS resource 定義、migration の変更を見る観点をまとめます。
 
 ## review の基本観点
 
-- 変更対象が Aurora か DynamoDB か、または AWS resource 定義かが明確か。
+- 変更対象が RDS PostgreSQL か DynamoDB か、または AWS resource 定義かが明確か。
 - desired state と実際に適用される変更の差分が review できるか。
 - data loss、lock、長時間実行、既存 data との不整合が起きないか。
 - capacity、cost、backup、restore、encryption、network exposure への影響が分かるか。
 - local 検証で何を実行し、何が未検証かが分かるか。
 - docs の方針と実際の変更がずれていないか。
 
-## Aurora migration の確認観点
+## RDS PostgreSQL migration の確認観点
 
 - `DROP TABLE`、`DROP COLUMN`、型変更など destructive な操作が含まれていないか。
 - `NOT NULL` 追加時に既存 data を考慮しているか。
@@ -49,7 +49,7 @@ git status -sb
 git diff --check
 ```
 
-Aurora migration や local database validation を変更した場合は、使える環境に応じて次も確認する。
+RDS PostgreSQL migration や local database validation を変更した場合は、使える環境に応じて次も確認する。
 
 ```powershell
 atlas migrate validate --env local
@@ -88,10 +88,10 @@ application code、生成 script、policy 判定 logic を追加した場合は�
 Atlas Registry への公開は、PR 検証とは別 workflow として扱う。`develop` にマージされた
 `migrations/` または `atlas.hcl` の変更だけを対象にし、GitHub Actions Secret の
 `ATLAS_TOKEN` に保存した Atlas Cloud Bot token を使って `dacpractice` を更新する。PR からの公開、token の平文保存、
-Registry 公開と Aurora への適用の同時実行は行わない。
+Registry 公開と RDS PostgreSQL への適用の同時実行は行わない。
 
-verification Aurora への適用は、Registry 公開の成功後に別 workflow で起動する。GitHub Environment
-`aurora-verification` の承認、Registry SHA tag、VPC 内 CodeBuild をすべて満たす場合だけ apply する。
+verification RDS PostgreSQL への適用は、Registry 公開の成功後に別 workflow で起動する。GitHub Environment
+`rds-verification`、Registry SHA tag、VPC 内 CodeBuild をすべて満たす場合だけ apply する。
 apply job は status、dry-run、apply、status の順に実行し、失敗時は forward fix 用の新規 migration を作る。
 
 GitHub Actions の第三者Actionは full commit SHA に固定する。Dependabot は使わないため、
@@ -99,4 +99,4 @@ Actionの更新はリリースタグを確認した専用のレビュー可能�
 
 Atlas Migration Lint workflow は migration を変更した同一リポジトリ PR だけを対象に、
 Atlas 公式 Action で lint 結果を PR へコメントする。fork PR には Atlas Cloud token を渡さず、
-この workflow を skip する。Registry 公開と Aurora への適用はこの workflow に含めない。
+この workflow を skip する。Registry 公開と RDS PostgreSQL への適用はこの workflow に含めない。

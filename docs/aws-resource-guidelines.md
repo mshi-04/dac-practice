@@ -2,7 +2,7 @@
 
 ## 目的
 
-Aurora cluster、DynamoDB table、network、security、backup などの AWS resource を
+RDS PostgreSQL インスタンス、DynamoDB table、network、security、backup などの AWS resource を
 Database as Code の一部として扱う。
 
 schema や migration だけでなく、database を安全に動かすための resource 設定も
@@ -19,7 +19,7 @@ Terraform code は `infra/` に置く。
 - secret 管理: secret、password、token は code・state・repository に置かず、変数や secret manager で扱う。
 - drift detection: `terraform plan` の差分で drift を検知し、code に反映するか戻す。
 
-GitHub Actions は OIDC role で CodeBuild の起動と結果取得だけを許可する。Aurora への
+GitHub Actions は OIDC role で CodeBuild の起動と結果取得だけを許可する。RDS PostgreSQL への
 network 接続と Atlas apply は private subnet 内の CodeBuild role が実行する。
 
 ## resource design
@@ -31,9 +31,9 @@ network 接続と Atlas apply は private subnet 内の CodeBuild role が実行
 - public network exposure は必要性を説明できる場合だけ許可する。
 - cost に影響する capacity、instance class、replica、storage、backup retention を review する。
 
-## Aurora resource
+## RDS PostgreSQL resource
 
-Aurora では、少なくとも次を code review 対象にする。
+RDS PostgreSQL では、少なくとも次を code review 対象にする。
 
 - engine family と version
 - cluster / instance topology

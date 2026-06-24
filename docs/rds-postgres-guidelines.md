@@ -1,16 +1,13 @@
-# Aurora Guidelines
+# RDS PostgreSQL Guidelines
 
 ## 目的
 
-Aurora は relational database として扱う。Database as Code では、AWS resource 定義と
+Amazon RDS for PostgreSQL は relational database として扱う。Database as Code では、AWS resource 定義と
 SQL schema migration を分けて review できる状態を目指す。
 
 ## engine
 
-DacPractice では Aurora PostgreSQL-compatible Edition を対象にする。
-
-Aurora MySQL-compatible 固有の SQL、型、extension、migration assumption はこの repo の
-Aurora schema では扱わない。
+DacPractice では Amazon RDS for PostgreSQL 16 を対象にする。
 
 ## schema design
 
@@ -35,7 +32,7 @@ Aurora schema では扱わない。
 
 ## AWS resource
 
-Aurora cluster 定義では、運用に必要な次の項目を明示的に扱う。
+RDS instance 定義では、運用に必要な次の項目を明示的に扱う。
 
 - subnet / security group
 - encryption
@@ -47,12 +44,12 @@ Aurora cluster 定義では、運用に必要な次の項目を明示的に扱�
 
 ## verification deployment
 
-- verification Aurora は private subnet に置き、public endpoint を作らない。
-- GitHub Actions の承認後、VPC 内 CodeBuild が Atlas Registry から immutable SHA tag を取得して apply する。
+- verification RDS PostgreSQL は private subnet に置き、public endpoint を作らない。
+- GitHub Actions から起動する VPC 内 CodeBuild が Atlas Registry から immutable SHA tag を取得して apply する。
 - apply 前に dry-run、apply 後に migration status を実行する。
-- Registry read token と Aurora credential は Secrets Manager から取得し、build log に出力しない。
+- Registry read token と RDS PostgreSQL credential は Secrets Manager から取得し、build log に出力しない。
 
-## blue/green と schema change
+## blue/green deployment と schema change
 
-Aurora の blue/green deployment を使う想定では、schema change が replication に与える
+RDS PostgreSQL の blue/green deployment を使う想定では、schema change が replication に与える
 影響を確認する。特に table rename や column rename は慎重に扱う。
