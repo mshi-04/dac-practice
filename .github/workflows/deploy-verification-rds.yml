@@ -1,4 +1,4 @@
-name: Deploy verification Aurora
+name: Deploy verification RDS
 
 on:
   workflow_run:
@@ -22,7 +22,7 @@ jobs:
   deploy:
     name: Apply published Atlas migration
     concurrency:
-      group: aurora-verification-deploy
+      group: rds-verification-deploy
       cancel-in-progress: false
     if: >-
       github.event_name == 'workflow_dispatch' ||
@@ -33,7 +33,7 @@ jobs:
         github.event.workflow_run.head_repository.full_name == github.repository
       )
     runs-on: ubuntu-latest
-    environment: aurora-verification
+    environment: rds-verification
     timeout-minutes: 45
 
     steps:

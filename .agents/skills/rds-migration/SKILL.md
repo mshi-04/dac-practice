@@ -1,17 +1,17 @@
 ---
-name: aurora-migration
-description: Aurora PostgreSQL schema migration with Atlas. Use when changing relational schema (tables, columns, indexes, constraints, views, functions), generating, linting, or testing migrations, or applying schema changes to Aurora.
+name: rds-migration
+description: Amazon RDS for PostgreSQL schema migration with Atlas. Use when changing relational schema (tables, columns, indexes, constraints, views, functions), generating, linting, testing, or applying PostgreSQL migrations.
 ---
 
-# Aurora Migration
+# RDS PostgreSQL Migration
 
-Aurora PostgreSQL の relational schema を Atlas の versioned migration で変更するときに使う。
+Amazon RDS for PostgreSQL の relational schema を Atlas の versioned migration で変更するときに使う。
 
 ## 参照
 
 判断基準の詳細は docs を読む（この skill には複製しない）。
 
-- Aurora schema / migration 方針: [aurora-guidelines](../../../docs/aurora-guidelines.md)
+- RDS PostgreSQL schema / migration 方針: [rds-postgres-guidelines](../../../docs/rds-postgres-guidelines.md)
 - 全体の流れ: [dac-workflow](../../../docs/dac-workflow.md)
 
 ## 手順

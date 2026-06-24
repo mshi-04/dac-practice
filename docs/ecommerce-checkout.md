@@ -3,18 +3,18 @@
 ## 目的
 
 EC サイトの checkout は、カート、注文、在庫、決済、配送の境界がまたがる。
-この文書では Aurora を source of truth とする transaction 境界と、DynamoDB との同期方針を定義する。
+この文書では RDS PostgreSQL を source of truth とする transaction 境界と、DynamoDB との同期方針を定義する。
 
 ## Source of truth
 
 - カートの編集中状態は DynamoDB の `ShoppingCart` table に置く。
-- 注文確定後の注文、金額、住所 snapshot、在庫引当、決済、配送は Aurora を source of truth にする。
+- 注文確定後の注文、金額、住所 snapshot、在庫引当、決済、配送は RDS PostgreSQL を source of truth にする。
 - DynamoDB の lookup cache や activity record は再生成可能な副次データとして扱う。
 
 ## Checkout の流れ
 
 1. DynamoDB から `cart_owner_id` のカート item を取得する。
-2. Aurora transaction を開始する。
+2. PostgreSQL transaction を開始する。
 3. `products` と `inventory_items` を読み、販売状態、価格、在庫を再確認する。
 4. `orders`、`order_items`、`order_addresses` を作成する。
 5. `inventory_items.reserved_quantity` を増やし、`inventory_reservations` と `inventory_movements` を作成する。
@@ -22,7 +22,7 @@ EC サイトの checkout は、カート、注文、在庫、決済、配送の�
 7. 同じ transaction に OrderLookup とカート後処理の durable outbox record を作成して commit する。
    commit 後に worker が OrderLookup を生成し、checkout snapshot と一致するカート item を削除する。
 
-在庫確認と引当は同じ Aurora transaction 内で直列化する。`inventory_items` を
+在庫確認と引当は同じ PostgreSQL transaction 内で直列化する。`inventory_items` を
 `SELECT ... FOR UPDATE` で lock するか、`available_quantity - reserved_quantity >= :quantity` を
 条件にした単一の `UPDATE` を使う。更新件数が 0 件なら在庫不足として transaction を rollback
 し、read と write の間に別 checkout が割り込んでも oversell しない。
@@ -33,7 +33,7 @@ EC サイトの checkout は、カート、注文、在庫、決済、配送の�
 - 在庫不足の場合は、注文を作らず checkout を失敗させる。
 - 決済 authorization が失敗した場合は、注文を `canceled` にするか、注文作成前に失敗させる。
   どちらを採用したかは application 側の仕様で明示する。
-- authorization 後に Aurora commit が失敗した場合は、決済 provider 側で void し、`payment_events` に残す。
+- authorization 後に PostgreSQL commit が失敗した場合は、決済 provider 側で void し、`payment_events` に残す。
 
 ## 在庫引当
 
@@ -61,10 +61,10 @@ EC サイトの checkout は、カート、注文、在庫、決済、配送の�
 
 ## DynamoDB 同期
 
-- `OrderLookup` とカート後処理は Aurora commit 後に実行する。DynamoDB を Aurora transaction に
+- `OrderLookup` とカート後処理は PostgreSQL commit 後に実行する。DynamoDB を PostgreSQL transaction に
   含めない。
-- 同じ Aurora transaction に durable outbox record を保存し、worker の再試行、オンデマンド回復、
+- 同じ PostgreSQL transaction に durable outbox record を保存し、worker の再試行、オンデマンド回復、
   定期照合で DynamoDB を収束させる。
-- lookup cache またはカート後処理の失敗で、commit 済みの Aurora 注文を rollback・取消ししない。
+- lookup cache またはカート後処理の失敗で、commit 済みの RDS PostgreSQL 注文を rollback・取消ししない。
 - OrderLookup の再生成、snapshot を条件にしたカート削除、CustomerActivity の保持・失効の詳細は
   [EC DynamoDB 整合性回復フロー](ecommerce-consistency-recovery.md) を参照する。

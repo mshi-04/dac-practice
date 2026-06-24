@@ -6,26 +6,26 @@ database schema、AWS database resource design、review guidance を code とし
 
 対象 database:
 
-- Amazon Aurora
+- Amazon RDS for PostgreSQL
 - Amazon DynamoDB
 
 現在は基盤整備フェーズです。運用方針と AI 向けの判断基準は [docs](docs) に置いています。
 
-練習用 domain は EC サイトを想定しています。Aurora schema と DynamoDB access pattern の
+練習用 domain は EC サイトを想定しています。RDS PostgreSQL schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
 checkout の transaction 境界は [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md) に置いています。
 その境界を実際に動く PL/pgSQL として実装したものは [sql/](sql/README.md) にあります。
 DynamoDB の ShoppingCart、CustomerActivity、OrderLookup は
 `infra/terraform/dynamodb.tf` で定義しています。設計の詳細は上記 data model を参照してください。
 
-Aurora は Amazon Aurora PostgreSQL-compatible Edition を対象にします。
+Amazon RDS for PostgreSQL 16 を対象にします。
 local validation では PostgreSQL 16 と Atlas migration を使います。
 
 ## 必要なもの
 
 - Git
 - Docker: local database validation を使う場合
-- Atlas CLI: Aurora style の relational migration を local で検証する場合
+- Atlas CLI: RDS PostgreSQL style の relational migration を local で検証する場合
 - Terraform: AWS resource 定義を検証する場合
 
 ## 最初に読む
@@ -34,16 +34,16 @@ local validation では PostgreSQL 16 と Atlas migration を使います。
 - [docs/project-context.md](docs/project-context.md)
 - [docs/dac-workflow.md](docs/dac-workflow.md)
 - [docs/aws-resource-guidelines.md](docs/aws-resource-guidelines.md)
-- [docs/aurora-guidelines.md](docs/aurora-guidelines.md)
+- [docs/rds-postgres-guidelines.md](docs/rds-postgres-guidelines.md)
 - [docs/dynamodb-guidelines.md](docs/dynamodb-guidelines.md)
 - [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md)
 - [docs/ecommerce-checkout.md](docs/ecommerce-checkout.md)
 - [docs/ecommerce-consistency-recovery.md](docs/ecommerce-consistency-recovery.md)
 - [docs/change-review-guidelines.md](docs/change-review-guidelines.md)
 
-## Aurora Local Validation
+## RDS PostgreSQL Local Validation
 
-Docker と Atlas が使える場合は、local の Aurora PostgreSQL-compatible migration を
+Docker と Atlas が使える場合は、local の RDS PostgreSQL migration を
 次のコマンドで検証・適用します。
 
 ```powershell
@@ -112,7 +112,7 @@ docker compose exec -T db psql -v ON_ERROR_STOP=1 -U app -d appdb -f /tmp/seeds/
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U app -d appdb -f /tmp/seeds/verify_representative_queries.sql
 ```
 
-検証クエリは [docs/ecommerce-data-model.md の Aurora の代表 query](docs/ecommerce-data-model.md#aurora-の代表-query)
+検証クエリは [docs/ecommerce-data-model.md の PostgreSQL の代表 query](docs/ecommerce-data-model.md#postgresql-の代表-query)
 を対象にしています。checkout の成功・在庫不足・取消・出荷の連続デモは
 [sql/README.md](sql/README.md) の `sql/examples/` を使用してください。
 
@@ -129,7 +129,7 @@ GitHub Actions は、PR 検証と Atlas Registry 公開を分けて実行しま�
   [docs/dac-workflow.md#terraform-plan-の-ci-検証](docs/dac-workflow.md#terraform-plan-の-ci-検証) を参照する。
 - `Deploy production`: `main` へのpushで `CI` が成功した場合だけ起動する唯一の本番CD。
   Terraform plan、Atlas validate/lint、GitHub Environment承認、Terraform apply、Atlas Registry公開、
-  Aurora migration applyを同一runで順に実行する。`develop`、PR、CI失敗、fork由来のworkflowからは
+  RDS PostgreSQL migration applyを同一runで順に実行する。`develop`、PR、CI失敗、fork由来のworkflowからは
   本番のOIDC credentialを取得しない。
 
 Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の `ATLAS_TOKEN` として
@@ -139,17 +139,17 @@ Registry 公開には、Atlas Cloud の Bot token を GitHub Actions Secret の 
 
 ## Production CD
 
-`infra/terraform/production/` はverificationとは別のTerraform state、VPC、Aurora、DynamoDB、
-CodeBuild、IAM rolesを管理します。これらとAurora schema migrationは、`Deploy production`の単一CDで
+`infra/terraform/production/` はverificationとは別のTerraform state、VPC、RDS PostgreSQL、DynamoDB、
+CodeBuild、IAM rolesを管理します。これらとPostgreSQL schema migrationは、`Deploy production`の単一CDで
 同じCI成功commitからデプロイします。GitHub OIDC providerはproduction stackが一度だけ管理し、
 verification stackは同providerをdata sourceで参照します。
 
 - **Terraform**: 対象commitでTerraform変更がある場合、read-only roleでplanを作成します。承認者はplanの
   resource変更と課金影響を確認し、GitHub Environment `production`のrequired reviewersが承認した後、
   別のapply roleで保存済みbinary planを適用します。stateが変わってplanが古くなった場合、applyは失敗します。
-- **Aurora / Atlas**: migration変更がある場合、同じrunでlintとchecksum validationを完了してから承認を待ちます。
+- **RDS PostgreSQL / Atlas**: migration変更がある場合、同じrunでlintとchecksum validationを完了してから承認を待ちます。
   承認後に対象commitをimmutable Registry SHA tagとして公開し、private subnetのCodeBuildがSecrets Managerから
-  接続情報を取得してapplyします。GitHub-hosted runnerはAuroraへ接続しません。
+  接続情報を取得してapplyします。GitHub-hosted runnerはRDS PostgreSQLへ接続しません。
 - **原子性**: CodeBuildは `atlas migrate apply --tx-mode all` を使用します。pending migration全体を
   一つのtransactionで実行するため、non-transactional DDLを含むリリースは失敗します。失敗時は
   自動rollbackではなく、新しいforward migrationで修正します。
@@ -157,10 +157,10 @@ verification stackは同providerをdata sourceで参照します。
 初回bootstrap、GitHub Environment variables、OIDC roleの最小権限は
 [docs/dac-workflow.md#production-cd](docs/dac-workflow.md#production-cd) を参照してください。
 
-## Verification Aurora Deployment
+## Verification RDS PostgreSQL Deployment
 
-`infra/terraform/` は Aurora PostgreSQL-compatible Serverless v2 と、VPC 内で Atlas を
-実行する CodeBuild を定義します。Aurora は private subnet に置き、GitHub-hosted runner から
+`infra/terraform/` は RDS PostgreSQL（`db.t4g.micro`）と、VPC 内で Atlas を
+実行する CodeBuild を定義します。RDS は private subnet に置き、GitHub-hosted runner から
 直接接続しません。Terraform state 用の S3 backend は `infra/terraform/bootstrap/` で先に作成します。
 
 #### 1. State bucket の bootstrap
@@ -197,7 +197,7 @@ terraform apply -var "aws_region=<region>"
 ```
 
 `develop` の migration 変更は SHA tag 付きで Atlas Registry に公開されます。続く
-`Deploy verification Aurora` workflow は GitHub Environment `aurora-verification` の承認後、
+`Deploy verification RDS` workflow は GitHub Environment `rds-verification` を使用して、
 OIDC 経由で CodeBuild を起動し、その tag のみを dry-run・apply・status の順に実行します。
 必要な GitHub Environment variables は `AWS_REGION`、`AWS_DEPLOY_ROLE_ARN`、
 `CODEBUILD_PROJECT_NAME` です。
@@ -205,20 +205,19 @@ OIDC 経由で CodeBuild を起動し、その tag のみを dry-run・apply・s
 ### 手動再デプロイ
 
 Terraform / GitHub Environment / Secrets の初回設定後に、既に Atlas Registry へ公開済みの
-immutable SHA tag を検証 Aurora へ再適用したい場合は、`Deploy verification Aurora` workflow を
+immutable SHA tag を検証 RDS PostgreSQL へ再適用したい場合は、`Deploy verification RDS` workflow を
 `workflow_dispatch`（手動実行）で起動します。新しい migration は追加しません。
 
-- 用途: 初回セットアップ直後の動作確認や、公開済み tag の検証 Aurora への再適用。
+- 用途: 初回セットアップ直後の動作確認や、公開済み tag の検証 RDS PostgreSQL への再適用。
 - 入力値 `migration_tag`: Atlas Registry に公開済みの immutable commit SHA tag。
   40桁の小文字16進数のみを受け付けます。空文字や形式違反は CodeBuild 起動前に失敗します。
-- 承認: GitHub Environment `aurora-verification` の承認を必ず通過します。承認後に CodeBuild が
-  同一 tag を status・dry-run・apply・status の順に実行します。
-- 実行手順: GitHub の Actions タブで `Deploy verification Aurora` を開き、`Run workflow` から
-  `migration_tag` に対象の SHA tag を入力して実行し、Environment の承認を行います。
+- 実行内容: CodeBuild が同一 tag を status・dry-run・apply・status の順に実行します。
+- 実行手順: GitHub の Actions タブで `Deploy verification RDS` を開き、`Run workflow` から
+  `migration_tag` に対象の SHA tag を入力して実行します。
 
 自動経路（`Publish Atlas Registry` 成功後の `workflow_run`）と手動経路は、migration tag の
 決定だけを event ごとに分岐し、CodeBuild への適用処理は共通です。GitHub-hosted runner から
-Aurora へ直接接続しません。
+RDS PostgreSQL へ直接接続しません。
 
 ### 初回運用 runbook
 
@@ -226,42 +225,42 @@ Aurora へ直接接続しません。
 
 1. **State bootstrap**: `infra/terraform/bootstrap/` を apply し、state bucket を作成する（lock は S3 native locking）。
 2. **Terraform plan / apply**: bucket 名を `backend.hcl` に設定して main stack を init し、
-   plan で差分を確認してから apply する。Aurora、VPC、NAT gateway、CodeBuild、OIDC role、
+   plan で差分を確認してから apply する。RDS PostgreSQL、VPC、NAT gateway、CodeBuild、OIDC role、
    Secrets Manager secret などが作成される。
 3. **Atlas Registry read token の Secrets Manager 登録**: Terraform が作成した
    `atlas_registry_token_secret_arn` の secret に、Atlas Cloud の Registry read token を投入する。
    token 値は Git・workflow・Terraform code には残さない。
-4. **GitHub Environment 設定**: `aurora-verification` Environment を作成し、必須項目を設定する。
-   - 承認者（required reviewers）を最低 1 名設定する。
+4. **GitHub Environment 設定**: `rds-verification` Environment を作成し、必須項目を設定する。
    - Environment variable `AWS_REGION`: 検証環境の region。
    - Environment variable `AWS_DEPLOY_ROLE_ARN`: Terraform 出力 `github_deploy_role_arn`。
    - Environment variable `CODEBUILD_PROJECT_NAME`: Terraform 出力 `codebuild_project_name`。
    - `terraform-plan` Environment にも required reviewers を設定する。Terraform plan の AWS 読取り
      OIDC role は、この Environment を通過した job だけが利用できる。
-5. **手動 deploy**: `Deploy verification Aurora` workflow を `workflow_dispatch` で起動し、
-   `migration_tag` に公開済みの immutable SHA tag を入力して、承認後に実行する。
+5. **手動 deploy**: `Deploy verification RDS` workflow を `workflow_dispatch` で起動し、
+   `migration_tag` に公開済みの immutable SHA tag を入力して実行する。
 
 #### 初回 deploy の成功確認
 
-- **GitHub Actions**: `Deploy verification Aurora` の run が success で完了する。
+- **GitHub Actions**: `Deploy verification RDS` の run が success で完了する。
 - **CodeBuild CloudWatch Logs**: status → dry-run → apply → status の各コマンドが成功している。
 - **Atlas migration status**: CodeBuild log の `migrate status` が pending migration なしを示す。
-- **Aurora の migration revision table**: Aurora 上の Atlas revision table（`atlas_schema_revisions`）に
+- **RDS の migration revision table**: RDS PostgreSQL 上の Atlas revision table（`atlas_schema_revisions`）に
   適用済み version が記録されている。
 
 #### 費用・破棄時の注意
 
-- **Aurora Serverless v2**: 最小 ACU でも常時課金される。検証が不要な間は破棄を検討する。
+- **RDS PostgreSQL**: `db.t4g.micro`・20GB gp2・Single-AZ は RDS free-tier の対象（アカウント
+  作成から 12 か月以内）。検証が不要な間は破棄してアイドル課金を避ける。
 - **NAT gateway**: 時間課金とデータ処理課金が発生する。private subnet の CodeBuild が
   Atlas Registry / image 取得に使うため、稼働中は維持コストがかかる。
-- **backup retention**: Aurora の自動 backup は retention 期間中 storage 課金が続く。破棄時は
+- **backup retention**: RDS の自動 backup は retention 期間中 storage 課金が続く。破棄時は
   保持された snapshot / backup を確認する。
-- **KMS key**: Aurora 暗号化用の customer managed key は月額課金がある。`terraform destroy`
+- **KMS key**: RDS 暗号化用の customer managed key は月額課金がある。`terraform destroy`
   では削除予約（waiting period）となり、即時削除されない。
-- **Aurora PostgreSQL logs**: CloudWatch Logs への export は 30 日で保持する。変更時は
-  `aurora_log_retention_in_days` を明示し、調査・監査要件と費用を review する。
-- **deletion protection**: cluster は `deletion_protection = true`。破棄するには先に
-  `-var "deletion_protection=false"` で apply してから destroy する。
+- **RDS PostgreSQL logs**: CloudWatch Logs への export は 30 日で保持する。変更時は
+  `postgres_log_retention_in_days` を明示し、調査・監査要件と費用を review する。
+- **deletion protection**: verification は `deletion_protection = true`。破棄するには先に
+  `-var "deletion_protection=false"` で apply してから destroy する（production は default false）。
 
 ## 構成
 
@@ -282,7 +281,7 @@ Aurora へ直接接続しません。
 
 ## Checkout SQL の実装
 
-`sql/` に、`docs/ecommerce-checkout.md` の checkout 境界を Aurora PostgreSQL-compatible
+`sql/` に、`docs/ecommerce-checkout.md` の checkout 境界を RDS PostgreSQL
 （PG16）の PL/pgSQL 関数として実装しています。schema は変更せず、既存テーブルの上で動く
 再利用可能な関数とデモを置いています。
 

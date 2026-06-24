@@ -12,7 +12,7 @@ DynamoDB の table 設計・access pattern・key design・capacity を扱うと�
 判断基準の詳細は docs を読む（この skill には複製しない）。
 
 - DynamoDB 設計方針: [dynamodb-guidelines](../../../docs/dynamodb-guidelines.md)
-- Aurora との責務分離: [dac-workflow](../../../docs/dac-workflow.md)
+- RDS PostgreSQL との責務分離: [dac-workflow](../../../docs/dac-workflow.md)
 - EC の cache 再生成と TTL 回復: [ecommerce-consistency-recovery](../../../docs/ecommerce-consistency-recovery.md)
 
 ## 手順
@@ -20,7 +20,7 @@ DynamoDB の table 設計・access pattern・key design・capacity を扱うと�
 1. access pattern を先に列挙する。
 2. access pattern に合わせて partition key / sort key を設計する（hot partition を避ける）。
 3. 必要な access pattern にだけ GSI / LSI を足し、projection を最小化する。
-4. on-demand か provisioned か、PITR・backup・TTL・Streams の要否を決める。TTL を使う場合は attribute の書込みと cache miss 時の Aurora 再生成を併せて設計する。
+4. on-demand か provisioned か、PITR・backup・TTL・Streams の要否を決める。TTL を使う場合は attribute の書込みと cache miss 時の PostgreSQL からの再生成を併せて設計する。
 5. access pattern と key design の対応表を残す。
 6. 設計変更で table replacement や index recreation が必要か確認する。
 

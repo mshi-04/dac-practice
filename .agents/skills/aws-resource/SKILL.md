@@ -1,11 +1,11 @@
 ---
 name: aws-resource
-description: AWS resource definition with Terraform. Use when defining or changing Aurora clusters, DynamoDB tables, network, parameter groups, or backup as Terraform code under infra/.
+description: AWS resource definition with Terraform. Use when defining or changing RDS PostgreSQL instances, DynamoDB tables, network, parameter groups, or backup as Terraform code under infra/.
 ---
 
 # AWS Resource (Terraform)
 
-Aurora cluster、DynamoDB table、network、parameter、backup などの AWS resource を
+RDS PostgreSQL instance、DynamoDB table、network、parameter、backup などの AWS resource を
 `infra/` の Terraform で定義するときに使う。
 
 ## 参照
