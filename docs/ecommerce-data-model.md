@@ -2,15 +2,15 @@
 
 ## 目的
 
-この文書は、EC サイトを想定した Aurora と DynamoDB の責務分離を定義する。
+この文書は、EC サイトを想定した RDS PostgreSQL と DynamoDB の責務分離を定義する。
 
-Aurora は注文、商品、在庫、支払いなど relational integrity と transaction が必要な
+RDS PostgreSQL は注文、商品、在庫、支払いなど relational integrity と transaction が必要な
 record を扱う。DynamoDB はカート、閲覧履歴、セッション状態など、key-value access と
 低 latency を優先する read/write pattern を扱う。
 
-## Aurora の対象
+## RDS PostgreSQL の対象
 
-Aurora PostgreSQL-compatible schema では、次の aggregate を管理する。
+RDS PostgreSQL schema では、次の aggregate を管理する。
 
 - `customers`: 顧客の基本情報。email は一意にする。
 - `customer_addresses`: 顧客の配送先、請求先住所。
@@ -32,7 +32,7 @@ Aurora PostgreSQL-compatible schema では、次の aggregate を管理する。
 `products` への参照に加えて `sku`、`product_name`、`unit_price_amount` を保持する。
 住所も同様に、顧客住所を参照するだけではなく `order_addresses` に注文時点の snapshot を残す。
 
-## Aurora の代表 query
+## PostgreSQL の代表 query
 
 - email から顧客を取得する。
 - 顧客ごとの注文履歴を注文日時の降順で取得する。
@@ -44,7 +44,7 @@ Aurora PostgreSQL-compatible schema では、次の aggregate を管理する。
 ## DynamoDB の対象
 
 DynamoDB は relational model をそのまま写さず、次の access pattern を優先して設計する。
-Terraform の table 定義は `infra/terraform/dynamodb.tf` に置く。Aurora は注文、在庫、決済の
+Terraform の table 定義は `infra/terraform/dynamodb.tf` に置く。RDS PostgreSQL は注文、在庫、決済の
 source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup cache を担う。
 
 ### ShoppingCart table
@@ -57,7 +57,7 @@ source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup
   - `cart_owner_id` でカート内 item を一覧する。
   - `cart_owner_id` + `item_id` で数量を更新する。
 - TTL: 有効。`expires_at_epoch` を Unix epoch 秒で設定し、一定期間更新のない匿名カートを削除する。
-- 整合性: checkout 直前に Aurora の商品価格と在庫を再確認する。checkout 成功後は snapshot の
+- 整合性: checkout 直前に RDS PostgreSQL の商品価格と在庫を再確認する。checkout 成功後は snapshot の
   `cart_revision` を条件に item を削除し、更新済み item を誤って削除しない。
 
 ### CustomerActivity table
@@ -81,16 +81,16 @@ source of truth を担い、DynamoDB はカート、活動履歴、注文 lookup
 - Partition key（physical attribute）: `lookup_key` / `S`
 - Sort key: なし。
 - 主な access pattern:
-  - `ORDER#<order_number>` から Aurora の `orders.id` を取得する。
-  - `PAYMENT#<provider>#<provider_payment_id>` から Aurora の `payments.id` を取得する。
+  - `ORDER#<order_number>` から RDS PostgreSQL の `orders.id` を取得する。
+  - `PAYMENT#<provider>#<provider_payment_id>` から RDS PostgreSQL の `payments.id` を取得する。
 - TTL: 有効。`expires_at_epoch` に cache 作成から 30 日後の Unix epoch 秒を設定する。
-- 注意: source of truth は Aurora とし、TTL による cache miss と target の不整合時は Aurora から
+- 注意: source of truth は RDS PostgreSQL とし、TTL による cache miss と target の不整合時は RDS PostgreSQL から
   再生成する。item 契約と回復手順は
   [EC DynamoDB 整合性回復フロー](ecommerce-consistency-recovery.md) を参照する。
 
 ## Review 時の注意
 
-- 注文確定、在庫引当、決済状態更新は Aurora transaction 境界として review する。
+- 注文確定、在庫引当、決済状態更新は PostgreSQL transaction 境界として review する。
 - カートと閲覧履歴は DynamoDB の TTL、hot partition、item size を review する。
 - DynamoDB item に商品説明や画像など大きな blob を持たせない。
 - lookup cache、checkout 後のカート削除、activity の TTL 失効は

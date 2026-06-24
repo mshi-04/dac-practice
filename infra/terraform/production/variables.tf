@@ -31,73 +31,76 @@ variable "terraform_state_key" {
   default     = "dac-practice/production/terraform.tfstate"
 }
 
-variable "aurora_engine_version" {
-  description = "Aurora PostgreSQL-compatible engine version."
+variable "postgres_engine_version" {
+  description = "RDS PostgreSQL engine version."
   type        = string
-  default     = "16.6"
+  default     = "16.9"
 }
 
-variable "aurora_min_capacity" {
-  description = "Minimum Aurora Serverless v2 ACUs."
+variable "db_instance_class" {
+  description = "RDS instance class. db.t4g.micro is free-tier eligible."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "Allocated storage in GiB. 20 GiB stays within the RDS free tier."
   type        = number
-  default     = 0.5
+  default     = 20
 
   validation {
-    condition = (
-      var.aurora_min_capacity >= 0.5 &&
-      var.aurora_min_capacity <= 128 &&
-      floor(var.aurora_min_capacity * 2) == var.aurora_min_capacity * 2 &&
-      var.aurora_min_capacity <= var.aurora_max_capacity
-    )
-    error_message = "aurora_min_capacity must be 0.5-128.0 in 0.5 increments and not exceed aurora_max_capacity."
+    condition     = var.db_allocated_storage >= 20 && var.db_allocated_storage <= 16384
+    error_message = "db_allocated_storage must be between 20 and 16384 GiB."
   }
 }
 
-variable "aurora_max_capacity" {
-  description = "Maximum Aurora Serverless v2 ACUs."
-  type        = number
-  default     = 2
+variable "db_storage_type" {
+  description = "RDS storage type. gp2 keeps the instance within the free tier."
+  type        = string
+  default     = "gp2"
 
   validation {
-    condition = (
-      var.aurora_max_capacity >= 0.5 &&
-      var.aurora_max_capacity <= 128 &&
-      floor(var.aurora_max_capacity * 2) == var.aurora_max_capacity * 2
-    )
-    error_message = "aurora_max_capacity must be 0.5-128.0 in 0.5 increments."
+    condition     = contains(["gp2", "gp3"], var.db_storage_type)
+    error_message = "db_storage_type must be gp2 or gp3."
   }
 }
 
-variable "aurora_backup_retention_period" {
-  description = "Number of days to retain Aurora automated backups."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = var.aurora_backup_retention_period >= 1 && var.aurora_backup_retention_period <= 35
-    error_message = "aurora_backup_retention_period must be between 1 and 35 days."
-  }
-}
-
-variable "aurora_log_retention_in_days" {
-  description = "Retention period for exported Aurora PostgreSQL logs."
-  type        = number
-  default     = 30
-
-  validation {
-    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.aurora_log_retention_in_days)
-    error_message = "aurora_log_retention_in_days must be a supported CloudWatch Logs retention value."
-  }
-}
-
-variable "deletion_protection" {
-  description = "Protect the production cluster from accidental deletion."
+variable "db_multi_az" {
+  description = "Enable Multi-AZ. Keep false to stay within the free tier."
   type        = bool
   default     = false
 }
 
-variable "aurora_skip_final_snapshot" {
-  description = "Skip the final snapshot on cluster deletion so the stack can be torn down repeatably."
+variable "db_backup_retention_period" {
+  description = "Number of days to retain RDS automated backups."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.db_backup_retention_period >= 0 && var.db_backup_retention_period <= 35
+    error_message = "db_backup_retention_period must be between 0 and 35 days."
+  }
+}
+
+variable "postgres_log_retention_in_days" {
+  description = "Retention period for exported RDS PostgreSQL logs."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.postgres_log_retention_in_days)
+    error_message = "postgres_log_retention_in_days must be a supported CloudWatch Logs retention value."
+  }
+}
+
+variable "deletion_protection" {
+  description = "Protect the production database from accidental deletion."
+  type        = bool
+  default     = false
+}
+
+variable "db_skip_final_snapshot" {
+  description = "Skip the final snapshot on database deletion so the stack can be torn down repeatably."
   type        = bool
   default     = true
 }

@@ -4,7 +4,7 @@ data "aws_availability_zones" "available" {
 
 data "aws_caller_identity" "current" {}
 
-data "aws_iam_policy_document" "aurora_kms" {
+data "aws_iam_policy_document" "postgres_kms" {
   statement {
     sid    = "EnableAccountAdministration"
     effect = "Allow"
@@ -223,8 +223,8 @@ resource "aws_security_group" "codebuild" {
   vpc_id      = aws_vpc.verification.id
 }
 
-resource "aws_security_group" "aurora" {
-  name        = "${local.name_prefix}-aurora"
+resource "aws_security_group" "postgres" {
+  name        = "${local.name_prefix}-postgres"
   description = "Accept PostgreSQL only from the deployment build."
   vpc_id      = aws_vpc.verification.id
 
@@ -237,10 +237,10 @@ resource "aws_security_group" "aurora" {
   }
 }
 
-resource "aws_vpc_security_group_egress_rule" "codebuild_to_aurora" {
-  description                  = "PostgreSQL to verification Aurora"
+resource "aws_vpc_security_group_egress_rule" "codebuild_to_postgres" {
+  description                  = "PostgreSQL to verification RDS"
   security_group_id            = aws_security_group.codebuild.id
-  referenced_security_group_id = aws_security_group.aurora.id
+  referenced_security_group_id = aws_security_group.postgres.id
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
@@ -273,27 +273,27 @@ resource "aws_vpc_security_group_egress_rule" "codebuild_dns_tcp" {
   ip_protocol       = "tcp"
 }
 
-resource "aws_db_subnet_group" "aurora" {
-  name       = "${local.name_prefix}-aurora"
+resource "aws_db_subnet_group" "postgres" {
+  name       = "${local.name_prefix}-postgres"
   subnet_ids = values(aws_subnet.private)[*].id
 }
 
-resource "aws_rds_cluster_parameter_group" "aurora" {
-  name        = "${local.name_prefix}-aurora-postgresql16"
-  family      = "aurora-postgresql16"
-  description = "Parameter group for the verification Aurora PostgreSQL cluster."
+resource "aws_db_parameter_group" "postgres" {
+  name        = "${local.name_prefix}-postgres16"
+  family      = "postgres16"
+  description = "Parameter group for the verification RDS PostgreSQL instance."
 }
 
-resource "aws_kms_key" "aurora" {
-  description             = "Encryption key for verification Aurora storage."
+resource "aws_kms_key" "postgres" {
+  description             = "Encryption key for verification RDS PostgreSQL storage."
   deletion_window_in_days = 7
   enable_key_rotation     = true
-  policy                  = data.aws_iam_policy_document.aurora_kms.json
+  policy                  = data.aws_iam_policy_document.postgres_kms.json
 }
 
-resource "aws_kms_alias" "aurora" {
-  name          = "alias/${local.name_prefix}-aurora"
-  target_key_id = aws_kms_key.aurora.key_id
+resource "aws_kms_alias" "postgres" {
+  name          = "alias/${local.name_prefix}-postgres"
+  target_key_id = aws_kms_key.postgres.key_id
 }
 
 resource "aws_kms_key" "dynamodb" {
@@ -308,9 +308,9 @@ resource "aws_kms_alias" "dynamodb" {
   target_key_id = aws_kms_key.dynamodb.key_id
 }
 
-resource "aws_cloudwatch_log_group" "aurora_postgresql" {
-  name              = "/aws/rds/cluster/${local.name_prefix}-aurora/postgresql"
-  retention_in_days = var.aurora_log_retention_in_days
+resource "aws_cloudwatch_log_group" "postgres" {
+  name              = "/aws/rds/instance/${local.name_prefix}-postgres/postgresql"
+  retention_in_days = var.postgres_log_retention_in_days
 }
 
 resource "aws_cloudwatch_log_group" "codebuild" {
@@ -318,41 +318,32 @@ resource "aws_cloudwatch_log_group" "codebuild" {
   retention_in_days = var.codebuild_log_retention_in_days
 }
 
-resource "aws_rds_cluster" "verification" {
-  cluster_identifier              = "${local.name_prefix}-aurora"
-  engine                          = "aurora-postgresql"
-  engine_version                  = var.aurora_engine_version
-  database_name                   = "dacpractice"
-  master_username                 = "atlas_admin"
+resource "aws_db_instance" "postgres" {
+  identifier                      = "${local.name_prefix}-postgres"
+  engine                          = "postgres"
+  engine_version                  = var.postgres_engine_version
+  instance_class                  = var.db_instance_class
+  allocated_storage               = var.db_allocated_storage
+  storage_type                    = var.db_storage_type
+  multi_az                        = var.db_multi_az
+  db_name                         = "dacpractice"
+  username                        = "atlas_admin"
   manage_master_user_password     = true
-  db_subnet_group_name            = aws_db_subnet_group.aurora.name
-  db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.aurora.name
-  vpc_security_group_ids          = [aws_security_group.aurora.id]
+  db_subnet_group_name            = aws_db_subnet_group.postgres.name
+  parameter_group_name            = aws_db_parameter_group.postgres.name
+  vpc_security_group_ids          = [aws_security_group.postgres.id]
+  publicly_accessible             = false
   storage_encrypted               = true
-  kms_key_id                      = aws_kms_key.aurora.arn
+  kms_key_id                      = aws_kms_key.postgres.arn
   backup_retention_period         = 7
-  preferred_backup_window         = "18:00-18:30"
-  preferred_maintenance_window    = "sun:19:00-sun:19:30"
+  backup_window                   = "18:00-18:30"
+  maintenance_window              = "sun:19:00-sun:19:30"
   deletion_protection             = var.deletion_protection
   skip_final_snapshot             = false
   final_snapshot_identifier       = "${local.name_prefix}-final"
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
-  depends_on = [aws_cloudwatch_log_group.aurora_postgresql]
-
-  serverlessv2_scaling_configuration {
-    min_capacity = var.aurora_min_capacity
-    max_capacity = var.aurora_max_capacity
-  }
-}
-
-resource "aws_rds_cluster_instance" "verification" {
-  identifier          = "${local.name_prefix}-instance-1"
-  cluster_identifier  = aws_rds_cluster.verification.id
-  engine              = aws_rds_cluster.verification.engine
-  engine_version      = aws_rds_cluster.verification.engine_version
-  instance_class      = "db.serverless"
-  publicly_accessible = false
+  depends_on = [aws_cloudwatch_log_group.postgres]
 }
 
 resource "aws_secretsmanager_secret" "atlas_registry_token" {
@@ -419,7 +410,7 @@ resource "aws_iam_role_policy" "codebuild" {
       {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
-        Resource = [aws_secretsmanager_secret.atlas_registry_token.arn, aws_rds_cluster.verification.master_user_secret[0].secret_arn]
+        Resource = [aws_secretsmanager_secret.atlas_registry_token.arn, aws_db_instance.postgres.master_user_secret[0].secret_arn]
       }
     ]
   })
@@ -427,7 +418,7 @@ resource "aws_iam_role_policy" "codebuild" {
 
 resource "aws_codebuild_project" "atlas_deploy" {
   name          = "${local.name_prefix}-atlas-deploy"
-  description   = "Applies an immutable Atlas Registry migration tag to verification Aurora."
+  description   = "Applies an immutable Atlas Registry migration tag to verification RDS PostgreSQL."
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = 30
 
@@ -460,7 +451,7 @@ resource "aws_codebuild_project" "atlas_deploy" {
 
     environment_variable {
       name  = "DATABASE_SECRET_ID"
-      value = aws_rds_cluster.verification.master_user_secret[0].secret_arn
+      value = aws_db_instance.postgres.master_user_secret[0].secret_arn
     }
   }
 
@@ -500,7 +491,7 @@ resource "aws_iam_role" "github_deploy" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:aurora-verification"
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:rds-verification"
         }
       }
     }]
@@ -586,14 +577,14 @@ resource "aws_iam_role_policy" "github_terraform_plan" {
         Resource = aws_codebuild_project.atlas_deploy.arn
       },
       {
-        Sid    = "ReadAuroraEncryptionKey"
+        Sid    = "ReadPostgresEncryptionKey"
         Effect = "Allow"
         Action = [
           "kms:DescribeKey",
           "kms:GetKeyPolicy",
           "kms:GetKeyRotationStatus",
         ]
-        Resource = aws_kms_key.aurora.arn
+        Resource = aws_kms_key.postgres.arn
       },
       {
         Sid    = "ReadRegistryTokenSecretMetadata"

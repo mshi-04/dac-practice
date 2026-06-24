@@ -1,13 +1,13 @@
 ---
 name: change-review
-description: Review Database as Code changes. Use when reviewing Aurora migrations, DynamoDB changes, or Terraform resource definitions for data loss, capacity or cost, backup, security, and reviewability.
+description: Review Database as Code changes. Use when reviewing RDS PostgreSQL migrations, DynamoDB changes, or Terraform resource definitions for data loss, capacity or cost, backup, security, and reviewability.
 ---
 
 # Change Review
 
-Aurora migration、DynamoDB 変更、Terraform resource 定義の review をするときに使う。
+RDS PostgreSQL migration、DynamoDB 変更、Terraform resource 定義の review をするときに使う。
 
-review・検証・運用しやすい Database as Code を優先する。Aurora の schema migration と
+review・検証・運用しやすい Database as Code を優先する。RDS PostgreSQL の schema migration と
 DynamoDB の table / access pattern 設計を分け、AWS resource 定義、schema 定義、migration、
 運用 policy を code review できる形で扱う。
 
@@ -19,7 +19,7 @@ DynamoDB の table / access pattern 設計を分け、AWS resource 定義、sche
 
 ## 手順
 
-1. 変更対象が Aurora / DynamoDB / Terraform resource / docs のどれかを分類する。
+1. 変更対象が RDS PostgreSQL / DynamoDB / Terraform resource / docs のどれかを分類する。
 2. desired state と実際に適用される差分が review できるか確認する。
 3. data loss、lock、長時間実行、既存 data との不整合がないか確認する。
 4. capacity、cost、backup、restore、encryption、network exposure への影響を確認する。
@@ -32,5 +32,5 @@ git status -sb
 git diff --check
 ```
 
-変更領域に応じて [aurora-migration](../aurora-migration/SKILL.md) / [dynamodb-modeling](../dynamodb-modeling/SKILL.md) /
+変更領域に応じて [rds-migration](../rds-migration/SKILL.md) / [dynamodb-modeling](../dynamodb-modeling/SKILL.md) /
 [aws-resource](../aws-resource/SKILL.md) の検証 command を実行する。使えない command は理由を完了報告に明記する。
