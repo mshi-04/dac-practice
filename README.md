@@ -2,6 +2,13 @@
 
 AWS database management のための Database as Code プロジェクトです。
 
+English version: [README.en.md](README.en.md)
+
+> **このプロジェクトは 2026-08-02 に開発を終了しました。**
+> 以降の機能追加と保守は行いません。repository は Database as Code の設計・検証・運用方針の
+> 記録として参照専用で残します。CI/CD workflow と AWS 環境は稼働を前提としないため、
+> 以下の手順をそのまま実行しても動作しない場合があります。
+
 database schema、AWS database resource design、review guidance を code として管理します。
 
 対象 database:
@@ -9,7 +16,7 @@ database schema、AWS database resource design、review guidance を code とし
 - Amazon RDS for PostgreSQL
 - Amazon DynamoDB
 
-現在は基盤整備フェーズです。運用方針と AI 向けの判断基準は [docs](docs) に置いています。
+基盤整備フェーズで開発を終了しました。運用方針と AI 向けの判断基準は [docs](docs) に置いています。
 
 練習用 domain は EC サイトを想定しています。RDS PostgreSQL schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
@@ -63,7 +70,7 @@ schema を変更するときは、`schema.sql` を先に更新し、Atlas で mi
 ```powershell
 atlas migrate diff --env local "change_description"
 atlas migrate lint --env local --latest 1
-latestVersion = (Get-ChildItem migrations/*.sql | Sort-Object Name | Select-Object -Last 1).BaseName.Split('_')[0]
+$latestVersion = (Get-ChildItem migrations/*.sql | Sort-Object Name | Select-Object -Last 1).BaseName.Split('_')[0]
 (Get-Content -Raw migrate.test.hcl).Replace('__LATEST_MIGRATION__', $latestVersion) | Set-Content "$env:TEMP/migrate.test.hcl"
 atlas migrate test --env local "$env:TEMP/migrate.test.hcl"
 atlas migrate validate --env local
@@ -163,7 +170,7 @@ verification stackは同providerをdata sourceで参照します。
 実行する CodeBuild を定義します。RDS は private subnet に置き、GitHub-hosted runner から
 直接接続しません。Terraform state 用の S3 backend は `infra/terraform/bootstrap/` で先に作成します。
 
-#### 1. State bucket の bootstrap
+### 1. State bucket の bootstrap
 
 `infra/terraform/bootstrap/` は main stack の remote state を保存する S3 bucket を作成します。
 state lock は S3 native locking（`use_lockfile=true`、`<key>.tflock` object）で行うため、別途の
@@ -183,7 +190,7 @@ terraform apply -var "aws_region=<region>" -var "state_bucket_name=<globally-uni
 `backend.hcl` 自体は Git 管理しません。bootstrap で出力した bucket 名を
 `backend.hcl` に書き、main Terraform を初期化します。
 
-#### 2. Main stack の初期化と plan/apply
+### 2. Main stack の初期化と plan/apply
 
 ```powershell
 Set-Location infra/terraform
@@ -249,8 +256,10 @@ RDS PostgreSQL へ直接接続しません。
 
 #### 費用・破棄時の注意
 
-- **RDS PostgreSQL**: `db.t4g.micro`・20GB gp2・Single-AZ は RDS free-tier の対象（アカウント
-  作成から 12 か月以内）。検証が不要な間は破棄してアイドル課金を避ける。
+- **RDS PostgreSQL**: `db.t4g.micro`・20GB gp2・Single-AZ の課金はアカウント区分で変わる。
+  2025-07-15 より前に free tier を有効化したアカウントは、作成から 12 か月間 750 時間/月と
+  20GB storage が無料。それ以降に作成したアカウントは Free / Paid plan の対象で、通常料金が
+  付与クレジットから消費される。いずれの場合も、検証が不要な間は破棄してアイドル課金を避ける。
 - **NAT gateway**: 時間課金とデータ処理課金が発生する。private subnet の CodeBuild が
   Atlas Registry / image 取得に使うため、稼働中は維持コストがかかる。
 - **backup retention**: RDS の自動 backup は retention 期間中 storage 課金が続く。破棄時は
@@ -270,13 +279,20 @@ RDS PostgreSQL へ直接接続しません。
 │   └── workflows/
 ├── .agents/
 │   └── skills/
+├── .claude/
+│   └── skills/
+├── .codex/
+│   └── skills/
 ├── atlas.hcl
 ├── docker-compose.yml
 ├── docs/
+├── infra/
+│   └── terraform/
 ├── migrations/
 ├── seeds/
 ├── schema.sql
-└── sql/
+├── sql/
+└── tests/
 ```
 
 ## Checkout SQL の実装
