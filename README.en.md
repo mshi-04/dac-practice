@@ -33,7 +33,7 @@ Atlas migrations.
 
 - Git
 - Docker: to run local database validation
-- Atlas CLI: to validate RDS PostgreSQL style relational migrations locally
+- Atlas CLI: to validate RDS PostgreSQL-style relational migrations locally
 - Terraform: to validate AWS resource definitions
 
 ## Read first
@@ -71,7 +71,7 @@ migration.
 ```powershell
 atlas migrate diff --env local "change_description"
 atlas migrate lint --env local --latest 1
-latestVersion = (Get-ChildItem migrations/*.sql | Sort-Object Name | Select-Object -Last 1).BaseName.Split('_')[0]
+$latestVersion = (Get-ChildItem migrations/*.sql | Sort-Object Name | Select-Object -Last 1).BaseName.Split('_')[0]
 (Get-Content -Raw migrate.test.hcl).Replace('__LATEST_MIGRATION__', $latestVersion) | Set-Content "$env:TEMP/migrate.test.hcl"
 atlas migrate test --env local "$env:TEMP/migrate.test.hcl"
 atlas migrate validate --env local
@@ -179,7 +179,7 @@ runs Atlas inside the VPC. RDS lives in a private subnet and is not reachable di
 GitHub-hosted runners. The S3 backend for the Terraform state is created first in
 `infra/terraform/bootstrap/`.
 
-#### 1. Bootstrap the state bucket
+### 1. Bootstrap the state bucket
 
 `infra/terraform/bootstrap/` creates the S3 bucket that stores the main stack's remote state. State
 locking uses S3 native locking (`use_lockfile=true` with a `<key>.tflock` object), so no separate
@@ -199,7 +199,7 @@ terraform apply -var "aws_region=<region>" -var "state_bucket_name=<globally-uni
 `backend.hcl` itself is not tracked in Git. Put the bucket name produced by the bootstrap stack into
 `backend.hcl` and initialize the main Terraform stack.
 
-#### 2. Initialize and plan/apply the main stack
+### 2. Initialize and plan/apply the main stack
 
 ```powershell
 Set-Location infra/terraform
@@ -263,8 +263,11 @@ The order of operations to bring up the verification environment and apply a pub
 
 #### Cost and teardown notes
 
-- **RDS PostgreSQL**: `db.t4g.micro` with 20GB gp2 and Single-AZ is covered by the RDS free tier (within
-  12 months of account creation). Destroy it while it is not needed to avoid idle charges.
+- **RDS PostgreSQL**: how `db.t4g.micro` with 20GB gp2 and Single-AZ is billed depends on the AWS
+  account. Accounts that had the free tier enabled before 2025-07-15 get 750 hours/month plus 20GB of
+  storage free for 12 months from sign-up. Accounts created on or after that date fall under the
+  Free / Paid plan, where usage is charged at the normal rate and covered by the granted credits until
+  they run out. Either way, destroy it while it is not needed to avoid idle charges.
 - **NAT gateway**: billed per hour and per processed byte. It stays a running cost because CodeBuild in the
   private subnet uses it to reach the Atlas Registry and pull images.
 - **Backup retention**: automated RDS backups keep incurring storage charges during the retention period.
