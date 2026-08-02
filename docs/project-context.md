@@ -30,12 +30,12 @@ DacPractice は Database as Code を管理するリポジトリです。
 - `atlas.hcl`: Atlas の local environment と migration 設定。
 - `infra/`: Terraform による AWS resource 定義。
 - `docker-compose.yml`: local 検証環境。AWS 実リソースの代替ではない。
-- `AGENTS.md`: repo 全体に効く薄い永続指示。
-- `.agents/skills/`: 作業領域ごとに分けた skill の正本（`rds-migration`、`dynamodb-modeling`、
+- `AGENTS.md`: Codex 向けの repo 全体に効く薄い永続指示。
+- `CLAUDE.md`: Claude Code 向けの永続指示。`AGENTS.md` と同内容で skill のパスだけが異なる。
+- `.agents/skills/`: 作業領域ごとに分けた Codex 用 skill（`rds-migration`、`dynamodb-modeling`、
   `aws-resource`、`change-review`）。
-- `.codex/skills/`: Atlas の Codex 用 skill。プロジェクト固有 skill の同期先にはしない。
-- `.claude/skills/`: `.agents/skills/` から同期生成する Claude Code 用 skill。
-- `docs/claude-code.md`: Claude Code の skill 同期と共通指示の扱い。
+- `.codex/skills/`: Atlas の Codex 用 skill。
+- `.claude/skills/`: Claude Code 用 skill。`.agents/skills/` と `.codex/skills/atlas/` に対応する。
 
 ## ブランチ運用
 

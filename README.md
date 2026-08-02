@@ -2,6 +2,13 @@
 
 AWS database management のための Database as Code プロジェクトです。
 
+English version: [README.en.md](README.en.md)
+
+> **このプロジェクトは 2026-08-02 に開発を終了しました。**
+> 以降の機能追加と保守は行いません。repository は Database as Code の設計・検証・運用方針の
+> 記録として参照専用で残します。CI/CD workflow と AWS 環境は稼働を前提としないため、
+> 以下の手順をそのまま実行しても動作しない場合があります。
+
 database schema、AWS database resource design、review guidance を code として管理します。
 
 対象 database:
@@ -9,7 +16,7 @@ database schema、AWS database resource design、review guidance を code とし
 - Amazon RDS for PostgreSQL
 - Amazon DynamoDB
 
-現在は基盤整備フェーズです。運用方針と AI 向けの判断基準は [docs](docs) に置いています。
+基盤整備フェーズで開発を終了しました。運用方針と AI 向けの判断基準は [docs](docs) に置いています。
 
 練習用 domain は EC サイトを想定しています。RDS PostgreSQL schema と DynamoDB access pattern の
 分担は [docs/ecommerce-data-model.md](docs/ecommerce-data-model.md) を参照してください。
@@ -270,13 +277,20 @@ RDS PostgreSQL へ直接接続しません。
 │   └── workflows/
 ├── .agents/
 │   └── skills/
+├── .claude/
+│   └── skills/
+├── .codex/
+│   └── skills/
 ├── atlas.hcl
 ├── docker-compose.yml
 ├── docs/
+├── infra/
+│   └── terraform/
 ├── migrations/
 ├── seeds/
 ├── schema.sql
-└── sql/
+├── sql/
+└── tests/
 ```
 
 ## Checkout SQL の実装
