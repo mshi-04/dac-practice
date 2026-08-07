@@ -2,7 +2,9 @@
 
 AWS database management のための Database as Code プロジェクトです。
 
-English version: [README.en.md](README.en.md)
+**日本語** | [English](README.en.md)
+
+正本は日本語版です。英語版は日本語版に追随します。
 
 > **このプロジェクトは 2026-08-02 に開発を終了しました。**
 > 以降の機能追加と保守は行いません。repository は Database as Code の設計・検証・運用方針の
