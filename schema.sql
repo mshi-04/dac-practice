@@ -49,7 +49,6 @@ CREATE TABLE products (
   category_id BIGINT REFERENCES product_categories (id) ON DELETE SET NULL,
   sku TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  description TEXT,
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'archived')),
   price_amount NUMERIC(12, 2) NOT NULL CHECK (price_amount >= 0),
   currency CHAR(3) NOT NULL DEFAULT 'JPY',
