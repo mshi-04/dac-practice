@@ -2,7 +2,9 @@
 
 A Database as Code project for AWS database management.
 
-日本語版は [README.md](README.md) を参照してください。
+[日本語](README.md) | **English**
+
+The Japanese [README.md](README.md) is the canonical version; this English README follows it.
 
 > **Development of this project ended on 2026-08-02.**
 > No further features or maintenance are planned. The repository is kept read-only as a record of
